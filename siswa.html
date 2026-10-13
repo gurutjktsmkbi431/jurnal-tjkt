@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Portal Siswa TJKT</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap">
+<style>
+:root{--bg:#EBF0F3;--surface:#fff;--s2:#F3F6F8;--ink:#10202E;--mut:#566877;--line:#D2DBE2;--brand:#0B5C6B;--onbrand:#fff;--acc:#E8590C;--ok:#1B7A44;--okbg:#DCF2E4;--warn:#8F5A00;--warnbg:#FFEFC9;--bad:#B3261E;--badbg:#FBDCD9;--info:#215DA6;--infobg:#DDEAF9;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root{--bg:#0B151D;--surface:#13222D;--s2:#192B38;--ink:#E5EDF3;--mut:#93A6B5;--line:#263A4A;--brand:#2FA6BA;--onbrand:#04202A;--acc:#FF8B4A;--ok:#5ED08B;--okbg:#14301F;--warn:#F2B84B;--warnbg:#352809;--bad:#FF8A80;--badbg:#3B1A18;--info:#7DB4F0;--infobg:#152A41}}
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 15px/1.5 "Plus Jakarta Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+h1,h2,h3{font-family:"Bricolage Grotesque","Plus Jakarta Sans",system-ui,sans-serif;margin:0;line-height:1.15}
+h1{font-size:24px}h2{font-size:18px}h3{font-size:16px}
+button,input,textarea,select{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--acc);outline-offset:2px;border-radius:4px}
+.wrap{max-width:760px;margin:0 auto;padding:0 14px 80px}
+header.top{position:sticky;top:env(safe-area-inset-top,0px);background:var(--bg);z-index:10;padding:12px 0 0}
+.who{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:10px}
+.who small{color:var(--mut);display:block}
+nav.tabs{display:flex;gap:2px;overflow-x:auto;border-bottom:1px solid var(--line)}
+nav.tabs button{background:none;border:0;border-bottom:3px solid transparent;padding:10px 13px;font-weight:600;color:var(--mut);cursor:pointer;white-space:nowrap}
+nav.tabs button[aria-selected="true"]{color:var(--brand);border-bottom-color:var(--acc)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px;margin-top:12px}
+.mut{color:var(--mut)}.sm{font-size:13px}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.chip{display:inline-flex;background:var(--s2);border:1px solid var(--line);border-radius:99px;padding:2px 10px;font-size:12.5px;font-weight:600;text-decoration:none;color:var(--ink)}
+.chip.ok{background:var(--okbg);color:var(--ok);border-color:transparent}.chip.warn{background:var(--warnbg);color:var(--warn);border-color:transparent}.chip.bad{background:var(--badbg);color:var(--bad);border-color:transparent}.chip.info{background:var(--infobg);color:var(--info);border-color:transparent}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--line);background:var(--surface);padding:10px 16px;border-radius:10px;cursor:pointer;font-weight:600;text-decoration:none;color:var(--ink);min-height:44px}
+.btn.primary{background:var(--brand);border-color:var(--brand);color:var(--onbrand)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+input[type=text],textarea,select{width:100%;border:1px solid var(--line);background:var(--surface);border-radius:9px;padding:10px 12px}
+textarea{resize:vertical}
+.body{white-space:pre-wrap;margin-top:8px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}
+.opt{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid var(--line);border-radius:10px;margin-top:6px;cursor:pointer}
+.opt input{margin-top:4px}
+.timer{position:sticky;top:calc(env(safe-area-inset-top,0px) + 8px);z-index:12;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;margin-top:12px}
+.timer b{font:700 22px "Bricolage Grotesque",sans-serif;color:var(--acc);font-variant-numeric:tabular-nums}
+.big{font:700 44px/1 "Bricolage Grotesque",sans-serif}
+table{border-collapse:collapse;width:100%}td,th{padding:8px 6px;border-bottom:1px solid var(--line);text-align:left;font-size:14px}
+.login{max-width:420px;margin:12vh auto 0}
+.err{color:var(--bad);margin-top:10px;font-weight:600}
+#toast{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;font-weight:600;z-index:50;max-width:90vw}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+<div id="toast" hidden role="status"></div>
+<script src="firebase-config.js"></script>
+<script src="fbapi.js"></script>
+<script>
+'use strict';
+const $=(s,r=document)=>r.querySelector(s);
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const BLN=['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'],HR=['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
+const pd=s=>{const [y,m,d]=String(s).split('-').map(Number);return new Date(y,m-1,d)};
+const fT=s=>{if(!s)return'';const d=pd(s);return HR[d.getDay()]+', '+d.getDate()+' '+BLN[d.getMonth()]+' '+d.getFullYear()};
+const todayS=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
+const safeUrl=u=>{u=String(u||'').trim();return /^https?:\/\//i.test(u)?u:(u?'https://'+u:'')};
+function toast(t){const e=$('#toast');e.textContent=t;e.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>e.hidden=true,2600)}
+
+let FBX=null,ME=null,PUB=null,NIL=null,KIR={},ABS={},UJI={},TAB='beranda',RUN=null,timer=null;
+const LS_K='portalSiswaKode';
+
+async function boot(){
+  const a=$('#app');a.innerHTML='<div class="login card"><p>Memuat…</p></div>';
+  try{FBX=await FB.init();await FBX.auth.anon()}
+  catch(e){a.innerHTML=`<div class="login card"><h1>Portal Siswa</h1><p class="err">${e.message==='NOCONFIG'?'Portal belum dikonfigurasi oleh guru.':'Tidak bisa terhubung. Periksa internet lalu muat ulang.'}</p></div>`;return}
+  const q=new URLSearchParams(location.search).get('k')||localStorage.getItem(LS_K);
+  if(q)await masuk(q,true);else loginView();
+}
+function loginView(msg){
+  $('#app').innerHTML=`<div class="login card"><h1>Portal Siswa TJKT</h1><p class="mut" style="margin:8px 0 14px">Masukkan kode pribadimu dari Pak Pandu.</p>
+  <label><span class="sm mut">Kode (8 karakter)</span><input type="text" id="kode" autocomplete="off" autocapitalize="characters" maxlength="12" placeholder="mis. K7M2QX9A"></label>
+  <div class="row"><button class="btn primary" id="btnMasuk">Masuk</button></div>${msg?`<p class="err">${esc(msg)}</p>`:''}</div>`;
+  $('#btnMasuk').onclick=()=>masuk($('#kode').value,false);
+  $('#kode').addEventListener('keydown',e=>{if(e.key==='Enter')masuk($('#kode').value,false)});
+}
+async function masuk(k,silent){
+  k=String(k||'').trim().toUpperCase().replace(/[^A-Z0-9]/g,'');
+  if(k.length<6){loginView('Kode terlalu pendek.');return}
+  try{
+    const me=await FBX.get('murid/'+k);
+    if(!me){localStorage.removeItem(LS_K);loginView(silent?'':'Kode tidak ditemukan. Periksa lagi atau tanya guru.');return}
+    ME=Object.assign({kode:k},me);localStorage.setItem(LS_K,k);history.replaceState(null,'',location.pathname);
+    await muat();render();
+  }catch(e){loginView('Gagal masuk: '+(e.code||e.message))}
+}
+async function muat(){
+  const k=ME.kode;
+  [PUB,NIL]=await Promise.all([FBX.get('publik/'+ME.kelas),FBX.get(`murid/${k}/nilai/ringkas`)]);
+  const [a,b,c]=await Promise.all([FBX.list(`murid/${k}/kiriman`),FBX.list(`murid/${k}/absen`),FBX.list(`murid/${k}/ujian`)]);
+  KIR={};a.forEach(d=>KIR[d.id]=d.data);ABS={};b.forEach(d=>ABS[d.id]=d.data);UJI={};c.forEach(d=>UJI[d.id]=d.data);
+}
+const links=o=>[].concat(o.links||[]).map(l=>`<a class="chip info" href="${esc(safeUrl(l.url))}" target="_blank" rel="noopener noreferrer">${esc(l.title||'Tautan')}</a>`).join('');
+
+function render(){
+  clearInterval(timer);
+  if(RUN){renderRun();return}
+  const tabs=[['beranda','Beranda'],['materi','Materi'],['tugas','Tugas'],['absen','Absen'],['ujian','Ujian'],['nilai','Nilai']];
+  $('#app').innerHTML=`<header class="top"><div class="who"><div><h1>${esc(ME.nama)}</h1><small>Kelas ${esc(PUB?PUB.nama:ME.kelas)}</small></div><div class="row" style="margin:0"><button class="btn" id="btnRef">Segarkan</button><button class="btn" id="btnOut">Keluar</button></div></div>
+  <nav class="tabs" role="tablist">${tabs.map(([v,l])=>`<button role="tab" aria-selected="${TAB===v}" data-t="${v}">${l}</button>`).join('')}</nav></header><main>${VIEW[TAB]()}</main>`;
+  document.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{TAB=b.dataset.t;render();window.scrollTo(0,0)});
+  $('#btnOut').onclick=()=>{localStorage.removeItem(LS_K);ME=null;loginView()};
+  $('#btnRef').onclick=async()=>{try{await muat();render();toast('Diperbarui')}catch(e){toast('Gagal memuat ulang')}};
+  bind();
+}
+const empty=(t)=>`<div class="card mut" style="text-align:center">${t}</div>`;
+const VIEW={
+  beranda(){
+    const t=todayS(),tg=(PUB&&PUB.tugas||[]).filter(x=>!KIR[x.id]&&(!x.tenggat||x.tenggat>=t)),ab=(PUB&&PUB.absen||[]).filter(x=>!ABS[x.id]),uj=(PUB&&PUB.kuis||[]).filter(q=>!(UJI[q.id]&&UJI[q.id].final));
+    return `<div class="card"><h2>Halo, ${esc(ME.nama.split(' ')[0])}</h2><p class="mut">Yang perlu kamu kerjakan:</p><div class="chips"><span class="chip ${tg.length?'warn':'ok'}">${tg.length} tugas belum dikumpulkan</span><span class="chip ${ab.length?'warn':'ok'}">${ab.length} absen terbuka</span><span class="chip ${uj.length?'warn':'ok'}">${uj.length} ujian tersedia</span></div></div>
+    ${PUB?'':empty('Belum ada konten dari guru untuk kelasmu.')}`;
+  },
+  materi(){const l=PUB&&PUB.materi||[];return l.map(m=>`<div class="card"><h3>${esc(m.judul)}</h3><div class="chips"><span class="chip">${esc(m.jenis)}</span>${m.elemen?`<span class="chip info">${esc(m.elemen)}</span>`:''}${m.tgl?`<span class="chip">${fT(m.tgl)}</span>`:''}</div>${m.deskripsi?`<div class="body">${esc(m.deskripsi)}</div>`:''}<div class="chips">${links(m)}</div></div>`).join('')||empty('Belum ada materi.')},
+  tugas(){const l=PUB&&PUB.tugas||[],t=todayS();return l.map(x=>{const k=KIR[x.id],late=x.tenggat&&x.tenggat<t;
+    return `<div class="card"><h3>${esc(x.judul)}</h3><div class="chips"><span class="chip">${esc(x.jenis)}</span>${x.tenggat?`<span class="chip ${late&&!k?'bad':'warn'}">Tenggat ${fT(x.tenggat)}</span>`:''}${k?'<span class="chip ok">Sudah dikirim</span>':''}</div>${x.instruksi?`<div class="body">${esc(x.instruksi)}</div>`:''}<div class="chips">${links(x)}${x.link?`<a class="chip info" href="${esc(safeUrl(x.link))}" target="_blank" rel="noopener noreferrer">Tautan pengumpulan guru</a>`:''}</div>
+    <label style="display:block;margin-top:12px"><span class="sm mut">Tempel tautan hasil kerjamu (Drive, YouTube, dll) atau tulis jawaban singkat</span><textarea rows="3" data-isi="${x.id}" maxlength="2900">${esc(k?k.isi:'')}</textarea></label>
+    <div class="row"><button class="btn primary" data-kirim="${x.id}">${k?'Kirim ulang':'Kumpulkan'}</button></div></div>`}).join('')||empty('Belum ada tugas.')},
+  absen(){const l=PUB&&PUB.absen||[];return l.map(x=>{const a=ABS[x.id];
+    return `<div class="card"><h3>${fT(x.tgl)} · jam ${esc(x.jam)}</h3><div class="chips"><span class="chip ${x.mode==='PJJ'?'warn':''}">${esc(x.mode)}</span>${a?`<span class="chip ok">Tercatat: ${({H:'Hadir',S:'Sakit',I:'Ijin'})[a.status]}</span>`:''}${x.link?`<a class="chip info" href="${esc(safeUrl(x.link))}" target="_blank" rel="noopener noreferrer">Buka kelas online</a>`:''}</div>
+    ${a?'<p class="mut sm" style="margin-top:8px">Absen sudah tercatat. Hubungi guru jika perlu diubah.</p>':`<label style="display:block;margin-top:10px"><span class="sm mut">Catatan (opsional, untuk sakit/ijin)</span><input type="text" data-cat="${x.id}" maxlength="250"></label><div class="row"><button class="btn primary" data-abs="${x.id}" data-s="H">Hadir</button><button class="btn" data-abs="${x.id}" data-s="S">Sakit</button><button class="btn" data-abs="${x.id}" data-s="I">Ijin</button></div>`}</div>`}).join('')||empty('Tidak ada absen yang dibuka.')},
+  ujian(){const l=PUB&&PUB.kuis||[];return l.map(q=>{const u=UJI[q.id],fin=u&&u.final;
+    return `<div class="card"><h3>${esc(q.judul)}</h3><div class="chips"><span class="chip">${esc(q.jenis)}</span><span class="chip">${q.soal.length} soal</span><span class="chip">${q.durasi} menit</span>${fin?'<span class="chip ok">Sudah dikerjakan</span>':u?'<span class="chip warn">Sedang berjalan</span>':''}</div>${q.petunjuk?`<div class="body">${esc(q.petunjuk)}</div>`:''}
+    <div class="row"><button class="btn primary" data-uji="${q.id}" ${fin?'disabled':''}>${u&&!fin?'Lanjutkan ujian':'Mulai ujian'}</button></div>${fin?'<p class="mut sm" style="margin-top:8px">Nilai akan muncul di tab Nilai setelah guru memeriksa.</p>':'<p class="mut sm" style="margin-top:8px">Ujian hanya bisa dikerjakan satu kali. Pastikan sinyal stabil sebelum mulai.</p>'}</div>`}).join('')||empty('Belum ada ujian.')},
+  nilai(){
+    if(!NIL)return empty('Nilai belum dikirim oleh guru.');
+    const a=NIL.akhir||{},f=v=>v==null?'–':(Math.round(v*10)/10).toString().replace('.',',');
+    return `<div class="card" style="text-align:center"><p class="mut">Nilai akhir semester ${esc(NIL.semester||'')}</p><div class="big">${f(a.na)}</div>${a.status?`<p style="margin-top:8px"><span class="chip ${a.status==='Tuntas'?'ok':'bad'}">${a.status}</span> <span class="mut sm">KKTP ${NIL.kktp}</span></p>`:''}
+    <p class="mut sm" style="margin-top:8px">Tugas ${f(a.tugas)} · Ulangan ${f(a.ulangan)} · Praktik ${f(a.praktik)}</p></div>
+    ${(NIL.items||[]).length?`<div class="card"><h3>Rincian nilai</h3><table><tbody>${NIL.items.map(i=>`<tr><td>${esc(i.judul)}<div class="mut sm">${esc(i.kat)}</div></td><td style="text-align:right"><b>${f(i.nilai)}</b></td></tr>`).join('')}</tbody></table></div>`:''}
+    ${(NIL.kuis||[]).length?`<div class="card"><h3>Hasil ujian online</h3><table><tbody>${NIL.kuis.map(i=>`<tr><td>${esc(i.judul)}</td><td style="text-align:right"><b>${f(i.skor)}</b></td></tr>`).join('')}</tbody></table></div>`:''}
+    <p class="mut sm" style="margin-top:10px">Diperbarui ${NIL.updated?new Date(NIL.updated).toLocaleString('id-ID'):''}</p>`;
+  }
+};
+function bind(){
+  document.querySelectorAll('[data-kirim]').forEach(b=>b.onclick=async()=>{
+    const id=b.dataset.kirim,ta=document.querySelector(`[data-isi="${id}"]`),isi=ta.value.trim();
+    if(!isi){toast('Isi dulu tautan atau jawabanmu.');return}
+    b.disabled=true;
+    try{const d={tugasId:id,isi,waktu:Date.now()};await FBX.set(`murid/${ME.kode}/kiriman/${id}`,d);KIR[id]=d;toast('Tugas terkirim');render()}
+    catch(e){b.disabled=false;toast('Gagal mengirim. Coba lagi.')}
+  });
+  document.querySelectorAll('[data-abs]').forEach(b=>b.onclick=async()=>{
+    const id=b.dataset.abs,st=b.dataset.s,c=document.querySelector(`[data-cat="${id}"]`);
+    document.querySelectorAll(`[data-abs="${id}"]`).forEach(x=>x.disabled=true);
+    try{const d={sesiId:id,status:st,catatan:c?c.value.trim():'',waktu:Date.now()};await FBX.set(`murid/${ME.kode}/absen/${id}`,d);ABS[id]=d;toast('Absen tercatat');render()}
+    catch(e){document.querySelectorAll(`[data-abs="${id}"]`).forEach(x=>x.disabled=false);toast('Gagal mencatat (mungkin sudah tercatat).')}
+  });
+  document.querySelectorAll('[data-uji]').forEach(b=>b.onclick=()=>mulaiUjian(b.dataset.uji));
+}
+/* ---- ujian ---- */
+function shuffle(a){a=[...a];for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
+async function mulaiUjian(id){
+  const q=PUB.kuis.find(x=>x.id===id);if(!q)return;
+  let u=UJI[id];
+  if(u&&u.final){toast('Ujian ini sudah dikerjakan.');return}
+  const key='ujian:'+ME.kode+':'+id;
+  let loc=null;try{loc=JSON.parse(localStorage.getItem(key)||'null')}catch(e){}
+  try{
+    if(!u){u={mulai:Date.now(),final:false};await FBX.set(`murid/${ME.kode}/ujian/${id}`,Object.assign({kuisId:id},u));UJI[id]=u}
+  }catch(e){toast('Gagal memulai. Periksa sinyal lalu coba lagi.');return}
+  const order=loc&&loc.order&&loc.order.length===q.soal.length?loc.order:(q.acak?shuffle(q.soal.map(s=>s.id)):q.soal.map(s=>s.id));
+  RUN={q,id,key,order,ans:(loc&&loc.ans)||{},end:u.mulai+q.durasi*60000};
+  render();window.scrollTo(0,0);
+}
+function persistRun(){try{localStorage.setItem(RUN.key,JSON.stringify({order:RUN.order,ans:RUN.ans}))}catch(e){}}
+function renderRun(){
+  const r=RUN,q=r.q;
+  const items=r.order.map((sid,n)=>{const s=q.soal.find(x=>x.id===sid);let inp='';
+    if(s.t==='pg')inp=s.opts.map(o=>`<label class="opt"><input type="radio" name="a-${s.id}" value="${o.k}" ${r.ans[s.id]===o.k?'checked':''} data-a="${s.id}"><span><b>${o.k}.</b> ${esc(o.v)}</span></label>`).join('');
+    else if(s.t==='bs')inp=['Benar','Salah'].map(v=>`<label class="opt"><input type="radio" name="a-${s.id}" value="${v}" ${r.ans[s.id]===v?'checked':''} data-a="${s.id}"><span>${v}</span></label>`).join('');
+    else inp=`<input type="text" value="${esc(r.ans[s.id]||'')}" data-a="${s.id}" placeholder="Ketik jawaban singkat" autocomplete="off">`;
+    return `<div class="card"><div style="font-weight:600;white-space:pre-wrap;margin-bottom:8px">${n+1}. ${esc(s.q)}</div>${inp}</div>`}).join('');
+  $('#app').innerHTML=`<div class="timer"><div><b id="tm">--:--</b><div class="sm mut">${esc(q.judul)}</div></div><button class="btn primary" id="btnKirim">Kumpulkan</button></div>${items}<div class="row"><button class="btn primary" id="btnKirim2">Kumpulkan jawaban</button></div>`;
+  document.querySelectorAll('[data-a]').forEach(el=>{const f=()=>{r.ans[el.dataset.a]=el.value;persistRun()};el.addEventListener(el.type==='text'?'input':'change',f)});
+  const send=()=>{if(confirm('Kumpulkan jawaban sekarang? Ujian tidak bisa diulang.'))kumpul()};
+  $('#btnKirim').onclick=send;$('#btnKirim2').onclick=send;
+  const tick=()=>{const left=Math.max(0,Math.round((r.end-Date.now())/1000));const e=$('#tm');if(e)e.textContent=String(Math.floor(left/60)).padStart(2,'0')+':'+String(left%60).padStart(2,'0');if(left<=0){clearInterval(timer);kumpul(true)}};
+  tick();timer=setInterval(tick,1000);
+}
+async function kumpul(auto){
+  const r=RUN;if(!r||r.sending)return;r.sending=true;clearInterval(timer);
+  try{
+    const d={kuisId:r.id,jawab:r.ans,waktu:Date.now(),mulai:UJI[r.id].mulai,final:true};
+    await FBX.set(`murid/${ME.kode}/ujian/${r.id}`,d);UJI[r.id]=d;localStorage.removeItem(r.key);RUN=null;TAB='ujian';render();toast(auto?'Waktu habis. Jawaban terkirim.':'Jawaban terkirim');
+  }catch(e){r.sending=false;toast('Gagal mengirim. Pastikan sinyal ada, lalu tekan Kumpulkan lagi.');renderRun()}
+}
+boot();
+</script>
+</body>
+</html>
