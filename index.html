@@ -316,13 +316,14 @@ const FileDB={
 let saveT=null;
 function setStat(t,cls){const e=$('#stat');if(e){e.className='stat '+(cls||'');e.lastChild.textContent=t}}
 function save(now){
+  S.setting.savedAt=Date.now();scheduleCloud();
   clearTimeout(saveT);
   const go=()=>{try{localStorage.setItem(LS_KEY,JSON.stringify(S));storeOK=true;setStat('Tersimpan '+new Date().toTimeString().slice(0,5))}catch(e){storeOK=false;setStat('Gagal menyimpan','err');toast('Penyimpanan peramban penuh atau diblokir. Unduh cadangan di menu Pengaturan.','bad')}};
   if(now){go()}else{setStat('Menyimpan…','busy');saveT=setTimeout(go,500)}
 }
 function fixState(){
   ['sesi','jurnal','adm','atp','materi','tugas','penilaian','kuis','hasil','catatan','libur','siswa','jadwal','kelas','pengumuman'].forEach(c=>{if(!Array.isArray(S[c]))S[c]=[]});
-  S.sub=S.sub||{};S.scores=S.scores||{};S.sesi.forEach(x=>{if(!x.hadir||typeof x.hadir!=='object')x.hadir={}});S.kuis.forEach(q=>{if(!Array.isArray(q.soal))q.soal=[]});
+  S.sub=S.sub||{};S.scores=S.scores||{};S.kuisNilai=S.kuisNilai||{};S.sesi.forEach(x=>{if(!x.hadir||typeof x.hadir!=='object')x.hadir={}});S.kuis.forEach(q=>{if(!Array.isArray(q.soal))q.soal=[]});
 }
 function loadState(){
   try{const r=localStorage.getItem(LS_KEY);if(r){S=JSON.parse(r);fixState();return}}catch(e){storeOK=false}
@@ -622,7 +623,7 @@ const ENT={
     def:()=>Object.assign(base(),{durasi:30,kktp:S.setting.kktp,acak:true,jenis:'Kuis',nilaiMode:'sembunyi',terbit:true}),
     fields:()=>[F.kelas(),F.sem(),F.elemen(),{k:'jenis',l:'Jenis',t:'select',opts:['Kuis','Ulangan harian','PTS','PAS','Latihan']},
       {k:'judul',l:'Judul',t:'text',req:1,w:'full'},{k:'durasi',l:'Durasi (menit)',t:'number',min:1,req:1},{k:'kktp',l:'Batas tuntas',t:'number',min:0,max:100},
-      {k:'link',l:'Tautan ujian online (Google Form dll, opsional)',t:'text',w:'full',ph:'https://…'},{k:'acak',l:'Acak urutan soal',t:'check'},{k:'terbit',l:'Tampilkan di portal siswa',t:'check'},{k:'nilaiMode',l:'Nilai ujian untuk siswa',t:'select',opts:[['sembunyi','Disembunyikan'],['skor','Tampilkan skor'],['pembahasan','Tampilkan skor + pembahasan']],hint:'Bisa diubah kapan saja di kartu ujian'},{k:'jadwalBuka',l:'Ujian dibuka pada (opsional)',t:'datetime-local'},{k:'jadwalTutup',l:'Ujian ditutup pada (opsional)',t:'datetime-local',hint:'Setelah ini siswa tidak bisa memulai'},{k:'petunjuk',l:'Petunjuk pengerjaan',t:'textarea',w:'full'},F.lamp('Naskah / bahan ujian (Word, PDF, Excel, tautan)')],
+      {k:'link',l:'Tautan ujian online (Google Form dll, opsional)',t:'text',w:'full',ph:'https://…'},{k:'acak',l:'Acak urutan soal',t:'check'},{k:'terbit',l:'Tampilkan di portal siswa',t:'check'},{k:'nilaiLangsung',l:'Tampilkan nilai LANGSUNG setelah siswa selesai (nilai sementara). Kunci jawaban ikut dikirim ke HP siswa, cocok untuk kuis latihan',t:'check',w:'full'},{k:'nilaiMode',l:'Nilai ujian untuk siswa',t:'select',opts:[['sembunyi','Disembunyikan'],['skor','Tampilkan skor'],['pembahasan','Tampilkan skor + pembahasan']],hint:'Bisa diubah kapan saja di kartu ujian'},{k:'jadwalBuka',l:'Ujian dibuka pada (opsional)',t:'datetime-local'},{k:'jadwalTutup',l:'Ujian ditutup pada (opsional)',t:'datetime-local',hint:'Setelah ini siswa tidak bisa memulai'},{k:'petunjuk',l:'Petunjuk pengerjaan',t:'textarea',w:'full'},F.lamp('Naskah / bahan ujian (Word, PDF, Excel, tautan)')],
     beforeSave:v=>{},afterSave:null}
 };
 function openEnt(coll,id,preset){
@@ -956,11 +957,11 @@ const KT={pg:'Pilihan ganda',bs:'Benar / Salah',isian:'Isian singkat'};
 const LET=['A','B','C','D','E'];
 const normTxt=s=>String(s==null?'':s).trim().toLowerCase().replace(/\s+/g,' ');
 function grade(q,ans){
-  let ok=0;const det={};
-  q.soal.forEach(s=>{const a=ans[s.id];let c=false;
+  let ok=0,pts=0,max=0;const det={};
+  q.soal.forEach(s=>{const w=Number(s.poin),p=w>0?w:1;max+=p;const a=ans[s.id];let c=false;
     if(s.t==='isian')c=a!=null&&String(s.key||'').split('|').map(normTxt).includes(normTxt(a));else c=a!=null&&a===s.key;
-    det[s.id]=c;if(c)ok++});
-  return {ok,total:q.soal.length,skor:q.soal.length?Math.round(ok/q.soal.length*1000)/10:0,det};
+    det[s.id]=c;if(c){ok++;pts+=p}});
+  return {ok,total:q.soal.length,pts,max,skor:max?Math.round(pts/max*1000)/10:0,det};
 }
 function vUjian(){
   if(UI.run)return vRun();
@@ -976,24 +977,24 @@ function soalCard(q,s,i){
   const keyIn=s.t==='pg'?LET.map((L,x)=>`<div class="optrow"><input type="radio" name="key-${s.id}" value="${L}" ${s.key===L?'checked':''} data-chg="soalkey" data-q="${s.id}" aria-label="Kunci ${L}"><input type="text" value="${esc(s.opts[x]||'')}" placeholder="Pilihan ${L}${x>=4?' (opsional)':''}" data-chg="soalopt" data-q="${s.id}" data-x="${x}" aria-label="Pilihan ${L}"><b>${L}</b></div>`).join('')+'<p class="mut sm" style="margin-top:6px">Pilih tombol bulat di sebelah kiri pilihan yang benar.</p>'
    :s.t==='bs'?`<div class="row" style="margin-top:6px">${['Benar','Salah'].map(v=>`<label class="opt"><input type="radio" name="key-${s.id}" value="${v}" ${s.key===v?'checked':''} data-chg="soalkey" data-q="${s.id}"> Kunci: ${v}</label>`).join('')}</div>`
    :`<label class="fld" style="margin-top:6px"><span>Jawaban benar (beberapa alternatif dipisah tanda |)</span><input type="text" value="${esc(s.key||'')}" data-chg="soalkey" data-q="${s.id}" placeholder="mis. 192.168.1.1|192.168.1.1/24"></label>`;
-  return `<article class="card q" id="soal-${s.id}"><div class="row" style="justify-content:space-between;margin-bottom:8px"><b>Soal ${i+1}</b><div class="row"><select data-chg="soaltype" data-q="${s.id}" style="width:auto" aria-label="Jenis soal">${Object.entries(KT).map(([v,l])=>`<option value="${v}" ${s.t===v?'selected':''}>${l}</option>`).join('')}</select>
+  return `<article class="card q" id="soal-${s.id}"><div class="row" style="justify-content:space-between;margin-bottom:8px"><b>Soal ${i+1}</b><div class="row"><label class="row sm mut" style="gap:4px">Poin <input type="number" min="1" step="any" value="${s.poin||1}" data-chg="soalpoin" data-q="${s.id}" style="width:66px" aria-label="Poin soal"></label><select data-chg="soaltype" data-q="${s.id}" style="width:auto" aria-label="Jenis soal">${Object.entries(KT).map(([v,l])=>`<option value="${v}" ${s.t===v?'selected':''}>${l}</option>`).join('')}</select>
   <button class="icon-btn" data-act="soal-up" data-q="${s.id}" title="Naikkan" aria-label="Naikkan">↑</button><button class="icon-btn" data-act="soal-down" data-q="${s.id}" title="Turunkan" aria-label="Turunkan">↓</button><button class="icon-btn" data-act="soal-del" data-q="${s.id}" title="Hapus soal" aria-label="Hapus soal">${ic('trash')}</button></div></div>
   <textarea rows="2" data-chg="soalq" data-q="${s.id}" placeholder="Tulis pertanyaan…" aria-label="Pertanyaan">${esc(s.q)}</textarea>${keyIn}</article>`;
 }
 function vSoal(q){
-  return pgHead('Kelola soal · '+esc(q.judul),`${q.soal.length} soal · durasi ${q.durasi} menit. Perubahan tersimpan otomatis.`,
+  return pgHead('Kelola soal · '+esc(q.judul),`${q.soal.length} soal (total ${q.soal.reduce((a,s)=>a+(Number(s.poin)>0?Number(s.poin):1),0)} poin) · durasi ${q.durasi} menit. Nilai = poin benar dibagi total poin x 100. Perubahan tersimpan otomatis.`,
     `<button class="btn" data-act="kuis-tpl">${ic('dl')} Templat Excel</button><label class="btn" for="imp-soal">${ic('upload')} Impor soal dari Excel</label><input type="file" id="imp-soal" accept=".xlsx,.csv" style="position:absolute;width:1px;height:1px;opacity:0"><button class="btn primary" data-act="kuis-done">Simpan & kembali</button><button class="btn ghost" data-act="kuis-cancel">Batal</button>`)+
   `<div class="list">${q.soal.map((s,i)=>soalCard(q,s,i)).join('')||emptyBox('Belum ada soal','Tambah soal satu per satu atau impor dari Excel (kolom: Soal, A, B, C, D, E, Kunci).')}</div>
   <div class="row" style="margin-top:14px"><button class="btn primary" data-act="soal-add" data-q="${q.id}">${ic('plus')} Tambah soal</button></div>`;
 }
 function vHasil(q){
   const sis=siswaOf(q.kelas);const hs=S.hasil.filter(h=>h.kuisId===q.id).sort((a,b)=>b.waktu-a.waktu);
-  const best={};hs.forEach(h=>{if(!best[h.siswaId]||h.skor>best[h.siswaId])best[h.siswaId]=h.skor});
+  const best={};hs.forEach(h=>{if(!best[h.siswaId]||h.skor>best[h.siswaId])best[h.siswaId]=h.skor});const man=(S.kuisNilai||{})[q.id]||{};Object.keys(man).forEach(id=>{best[id]=man[id]});
   const vals=Object.values(best);
   return pgHead('Hasil · '+esc(q.judul),`${esc(kNama(q.kelas))} · ${q.soal.length} soal`,`<button class="btn" data-act="x-kuis" data-id="${q.id}">${ic('dl')} Excel</button><button class="btn" data-act="kuis-nilai" data-id="${q.id}">Salin ke nilai ulangan</button><button class="btn" data-act="kuis-back">Kembali</button>`)+
   `<div class="facts" style="margin-top:0"><div class="card fact"><b>${vals.length}/${sis.length}</b><span>siswa sudah ikut</span></div><div class="card fact"><b>${fn(vals.length?vals.reduce((a,b)=>a+b,0)/vals.length:null)}</b><span>rata-rata nilai tertinggi</span></div><div class="card fact"><b>${vals.filter(v=>v>=q.kktp).length}</b><span>tuntas (≥ ${q.kktp})</span></div></div>
-  <div class="card tw"><table class="tbl"><thead><tr><th>No</th><th>Nama</th><th class="num">Nilai tertinggi</th><th>Percobaan</th><th>Status</th></tr></thead><tbody>${sis.map((x,i)=>{const mine=hs.filter(h=>h.siswaId===x.id);const b=best[x.id];
-    return `<tr><td>${i+1}</td><td>${esc(x.nama)}</td><td class="num"><b>${fn(b)}</b></td><td>${mine.map(h=>`<span class="chip">${fn(h.skor)} <span class="mut">${h.ok}/${h.total} · ${fTgl(ymd(new Date(h.waktu)))}</span><button class="icon-btn" style="padding:0" data-act="hasil-del" data-id="${h.id}" aria-label="Hapus percobaan">${ic('x')}</button></span>`).join(' ')||'<span class="mut">Belum ikut</span>'}</td><td>${b==null?'–':`<span class="chip ${b>=q.kktp?'ok':'bad'}">${b>=q.kktp?'Tuntas':'Remedial'}</span>`}</td></tr>`}).join('')}</tbody></table></div>`;
+  <div class="card tw"><table class="tbl"><thead><tr><th>No</th><th>Nama</th><th class="num">Nilai tertinggi</th><th>Percobaan</th><th>Nilai manual</th><th>Status</th></tr></thead><tbody>${sis.map((x,i)=>{const mine=hs.filter(h=>h.siswaId===x.id);const b=best[x.id];
+    return `<tr><td>${i+1}</td><td>${esc(x.nama)}</td><td class="num"><b>${fn(b)}</b></td><td>${mine.map(h=>`<span class="chip">${fn(h.skor)} <span class="mut">${h.ok}/${h.total} · ${fTgl(ymd(new Date(h.waktu)))}</span><button class="icon-btn" style="padding:0" data-act="hasil-del" data-id="${h.id}" aria-label="Hapus percobaan">${ic('x')}</button></span>`).join(' ')||'<span class="mut">Belum ikut</span>'}</td><td><input type="number" min="0" max="100" step="any" class="sc" style="border:1px solid var(--line);border-radius:7px" data-chg="kuismanual" data-q="${q.id}" data-p="${x.id}" value="${man[x.id]==null?'':man[x.id]}" placeholder="auto" aria-label="Nilai manual ${esc(x.nama)}"></td><td>${b==null?'–':`<span class="chip ${b>=q.kktp?'ok':'bad'}">${b>=q.kktp?'Tuntas':'Remedial'}</span>`}</td></tr>`}).join('')}</tbody></table></div>`;
 }
 function runOrder(q){const ids=q.soal.map(s=>s.id);if(q.acak)for(let i=ids.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[ids[i],ids[j]]=[ids[j],ids[i]]}return ids}
 function vRun(){
@@ -1028,7 +1029,7 @@ function startTimer(){
 function submitRun(auto){
   const r=UI.run;if(!r||r.done)return;const q=byId(S.kuis,r.kuisId);
   const g=grade(q,r.ans);
-  const h={id:uid('hs'),kuisId:q.id,siswaId:r.siswaId,waktu:Date.now(),skor:g.skor,ok:g.ok,total:g.total};
+  const h={id:uid('hs'),kuisId:q.id,siswaId:r.siswaId,waktu:Date.now(),skor:g.skor,ok:g.ok,total:g.total,pts:g.pts,max:g.max};
   S.hasil.push(h);save();r.done={...h,det:g.det};clearInterval(runTimer);
   render();toast(auto?'Waktu habis. Jawaban dikumpulkan otomatis.':'Jawaban terkumpul','ok');
 }
@@ -1037,7 +1038,7 @@ function kuisKeNilai(q){
   if(!p){p={id:uid('penilaian'),kelas:q.kelas,semester:q.semester,kategori:'ulangan',judul:q.jenis+': '+q.judul,tgl:todayStr(),elemen:q.elemen||'',kuisId:q.id,catatan:'',lampiran:[]};S.penilaian.push(p)}
   S.scores[p.id]=S.scores[p.id]||{};let n=0;
   S.hasil.filter(h=>h.kuisId===q.id).forEach(h=>{const cur=S.scores[p.id][h.siswaId];if(cur==null||h.skor>cur){S.scores[p.id][h.siswaId]=h.skor}});
-  n=Object.keys(S.scores[p.id]).length;save();toast('Nilai '+n+' siswa disalin ke Nilai ulangan','ok');
+  Object.entries((S.kuisNilai||{})[q.id]||{}).forEach(([sid,v])=>{S.scores[p.id][sid]=v});n=Object.keys(S.scores[p.id]).length;save();toast('Nilai '+n+' siswa disalin ke Nilai ulangan','ok');
 }
 
 /* ================= REKAP ================= */
@@ -1128,7 +1129,7 @@ function exportSemua(){
 function exportKuis(id){
   if(!xlsxOK())return;const q=byId(S.kuis,id),sis=siswaOf(q.kelas),hs=S.hasil.filter(h=>h.kuisId===id);
   const A=[['HASIL '+q.jenis.toUpperCase()+': '+q.judul],[kNama(q.kelas)+' · '+q.soal.length+' soal · batas tuntas '+q.kktp],[],['NO','NAMA','NILAI TERTINGGI','JUMLAH PERCOBAAN','KETUNTASAN']];
-  sis.forEach((w,i)=>{const m=hs.filter(h=>h.siswaId===w.id);const b=m.length?Math.max(...m.map(h=>h.skor)):'';A.push([i+1,w.nama,b,m.length,b===''?'':b>=q.kktp?'Tuntas':'Remedial'])});
+  sis.forEach((w,i)=>{const m=hs.filter(h=>h.siswaId===w.id);const mv=(S.kuisNilai||{})[q.id]?(S.kuisNilai[q.id][w.id]):null;const b=mv!=null?mv:(m.length?Math.max(...m.map(h=>h.skor)):'');A.push([i+1,w.nama,b,m.length,b===''?'':b>=q.kktp?'Tuntas':'Remedial'])});
   const wb=XLSX.utils.book_new();sh(wb,'Hasil',A,[6,32,16,18,14]);xlsxSave(wb,'Hasil_'+q.judul.replace(/[^\w]+/g,'_').slice(0,40)+'.xlsx');
 }
 function readSheet(file){return file.arrayBuffer().then(b=>{const wb=XLSX.read(b,{type:'array'});return XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:''})})}
@@ -1155,6 +1156,7 @@ async function importSoal(file,q){
       const s={id:uid('so'),q:t,opts:['','','','',''],t:'isian',key:key};
       if(nopt>=2&&/^[A-E]$/i.test(key)){s.t='pg';s.opts=opts;s.key=key.toUpperCase()}
       else if(/^(benar|salah)$/i.test(key)&&nopt<2){s.t='bs';s.key=/^b/i.test(key)?'Benar':'Salah'}
+      {const pp=parseFloat(String(r[7]||'').replace(',','.'));if(pp>0)s.poin=pp}
       add.push(s)});
     if(!add.length){toast('Tidak ada soal terbaca. Kolom: Soal, A, B, C, D, E, Kunci.','bad');return}
     q.soal.push(...add);save();render();toast(add.length+' soal diimpor','ok');
@@ -1338,7 +1340,7 @@ const ACT={
   'kuis-back':()=>{UI.kuisHasil=null;render()},
   'kuis-nilai':d=>kuisKeNilai(byId(S.kuis,d.id)),
   'hasil-del':d=>ask('Hapus percobaan ini?',()=>{S.hasil=S.hasil.filter(h=>h.id!==d.id);save();render()}),
-  'kuis-tpl':()=>{if(!xlsxOK())return;const wb=XLSX.utils.book_new();sh(wb,'Soal',[['Soal','A','B','C','D','E','Kunci'],['Perangkat yang menghubungkan beberapa komputer dalam satu LAN adalah …','Router','Switch','Modem','Repeater','','B'],['Kabel UTP menggunakan konektor RJ-45.','','','','','','Benar'],['Singkatan dari IP adalah …','','','','','','Internet Protocol']],[60,18,18,18,18,18,22]);xlsxSave(wb,'Templat_Soal_Ujian.xlsx')},
+  'kuis-tpl':()=>{if(!xlsxOK())return;const wb=XLSX.utils.book_new();sh(wb,'Soal',[['Soal','A','B','C','D','E','Kunci','Poin'],['Perangkat yang menghubungkan beberapa komputer dalam satu LAN adalah …','Router','Switch','Modem','Repeater','','B'],['Kabel UTP menggunakan konektor RJ-45.','','','','','','Benar'],['Singkatan dari IP adalah …','','','','','','Internet Protocol']],[60,18,18,18,18,18,22]);xlsxSave(wb,'Templat_Soal_Ujian.xlsx')},
   'kelas-edit':()=>{const kk=K();openModal({title:'Wali kelas & elemen · '+kk.nama,vals:{wali:kk.wali,elemen:kk.elemen.join('\n'),pkl:!!kk.pkl},
     fields:[{k:'wali',l:'Wali kelas',t:'text',w:'full'},{k:'elemen',l:'Elemen (satu per baris)',t:'textarea',rows:5,w:'full'},{k:'pkl',l:'Kelas sedang PKL',t:'check'}],
     onSave:v=>{kk.wali=v.wali;kk.elemen=v.elemen.split('\n').map(x=>x.trim()).filter(Boolean);kk.pkl=v.pkl;save();render();toast('Tersimpan','ok')}})},
@@ -1354,6 +1356,9 @@ const ACT={
   'x-absen':exportAbsen,'x-nilai':exportNilai,'x-jurnal':exportJurnal,'x-semua':exportSemua,'x-kuis':d=>exportKuis(d.id)
 };
 const CHG={
+  soalpoin:(v,el,d)=>{const q=byId(S.kuis,UI.kuisEdit),s=byId(q.soal,d.q),n=parseFloat(String(v).replace(',','.'));s.poin=n>0?n:1;el.value=s.poin;save();$$('.pg-h .lead').forEach(e=>e.textContent=e.textContent.replace(/total [\d.,]+ poin/,'total '+q.soal.reduce((a,x)=>a+(Number(x.poin)>0?Number(x.poin):1),0)+' poin'))},
+  kuismanual:(v,el,d)=>{S.kuisNilai=S.kuisNilai||{};S.kuisNilai[d.q]=S.kuisNilai[d.q]||{};if(v===''){delete S.kuisNilai[d.q][d.p]}else{const n=Math.min(100,Math.max(0,parseFloat(String(v).replace(',','.'))));if(!isNaN(n)){S.kuisNilai[d.q][d.p]=n;el.value=n}}save();render();autoSync(true)},
+  autocloud:(v,el)=>{S.setting.autoCloud=el.checked;save();render();if(el.checked)scheduleCloud();toast(el.checked?'Cadangan otomatis aktif':'Cadangan otomatis dimatikan')},
   nilaimode:(v,el,d)=>{byId(S.kuis,d.id).nilaiMode=v;save();render();autoSync(true)},
   pnilai:(v,el,d)=>{S.setting.portalNilai=Object.assign(pn(),{[d.k]:el.checked});save();render();autoSync(true)},
   gk:v=>{S.setting.kelas=v;UI.absBulan=null;UI.tugasOpen=null;UI.kuisEdit=null;UI.kuisHasil=null;save();render()},
@@ -1429,7 +1434,7 @@ async function fbConnect(){
   try{
     if(!window.FB)throw new Error('NOFB');
     FBX=await FB.init();
-    FBX.auth.onChange(u=>{fbUser=u;if(UI.tab==='portal')render()});
+    FBX.auth.onChange(u=>{fbUser=u;if(u&&u.email)checkCloud();if(UI.tab==='portal')render()});
     fbMsg='';
   }catch(e){FBX=null;fbMsg=(e.message==='NOCONFIG'?'Firebase belum dikonfigurasi. Isi firebase-config.js (lihat PANDUAN.md).':e.message==='NOFB'?'Berkas fbapi.js tidak termuat. Pastikan fbapi.js ada di GitHub bersama index.html.':'Tidak bisa menghubungi Firebase. Periksa koneksi internet dan firebase-config.js.')+(e.message==='NOCONFIG'||e.message==='NOFB'?'':' Keterangan teknis: '+((e&&(e.code||e.name))||'')+' '+(e&&e.message||''))}
   if(UI.tab==='portal')render();
@@ -1446,7 +1451,7 @@ function buildPublik(kid){
     nama:kk.nama,updated:Date.now(),nilaiTampil:pn(),pengumuman:S.pengumuman.filter(p=>p.terbit&&(p.kelas==='ALL'||p.kelas===kid)).sort((a,b)=>(b.tgl||'').localeCompare(a.tgl||'')).map(p=>({id:p.id,judul:p.judul,isi:p.isi||'',tgl:p.tgl||''})),
     materi:S.materi.filter(m=>m.kelas===kid&&m.terbit).sort((a,b)=>(b.tgl||'').localeCompare(a.tgl||'')).map(m=>({id:m.id,judul:m.judul,jenis:m.jenis,deskripsi:m.deskripsi||'',tgl:m.tgl||'',elemen:m.elemen||'',jb:m.jadwalBuka||'',jt:m.jadwalTutup||'',links:linksOf(m)})),
     tugas:S.tugas.filter(t=>t.kelas===kid&&t.terbit).sort((a,b)=>(b.tgl||'').localeCompare(a.tgl||'')).map(t=>({id:t.id,judul:t.judul,jenis:t.jenis,tgl:t.tgl||'',tenggat:t.tenggat||'',instruksi:t.instruksi||'',link:t.link?safeUrl(t.link):'',jb:t.jadwalBuka||'',jt:t.jadwalTutup||'',links:linksOf(t)})),
-    kuis:S.kuis.filter(q=>q.kelas===kid&&q.terbit&&q.soal.length).map(q=>({id:q.id,judul:q.judul,jenis:q.jenis,durasi:q.durasi,petunjuk:q.petunjuk||'',acak:!!q.acak,jb:q.jadwalBuka||'',jt:q.jadwalTutup||'',nilaiMode:q.nilaiMode||'sembunyi',soal:q.soal.map(s=>({id:s.id,t:s.t,q:s.q,opts:s.t==='pg'?s.opts.map((o,i)=>o?{k:LET[i],v:o}:null).filter(Boolean):[]}))})),
+    kuis:S.kuis.filter(q=>q.kelas===kid&&q.terbit&&q.soal.length).map(q=>({id:q.id,judul:q.judul,jenis:q.jenis,durasi:q.durasi,petunjuk:q.petunjuk||'',acak:!!q.acak,jb:q.jadwalBuka||'',jt:q.jadwalTutup||'',nilaiMode:q.nilaiMode||'sembunyi',langsung:!!q.nilaiLangsung,soal:q.soal.map(s=>({id:s.id,t:s.t,q:s.q,poin:(Number(s.poin)>0?Number(s.poin):1),...(q.nilaiLangsung?{key:s.key}:{}),opts:s.t==='pg'?s.opts.map((o,i)=>o?{k:LET[i],v:o}:null).filter(Boolean):[]}))})),
     absen:S.sesi.filter(x=>x.kelas===kid&&x.buka).sort(cmpSesi).map(x=>({id:x.id,tgl:x.tgl,jam:x.jam,mode:x.mode||'Tatap muka',link:x.link?safeUrl(x.link):'',jb:x.jadwalBuka||'',jt:x.jadwalTutup||''}))
   };
 }
@@ -1482,7 +1487,7 @@ async function fbPull(){
       if(s.hadir[w.id]!==d.data.status){s.hadir[w.id]=d.data.status;na++}}catch(e){console.error(e)}}
     for(const d of uji){try{const w=byKode.get(d.path.split('/')[1]);const q=w&&byId(S.kuis,d.data.kuisId||d.id);if(!q||!d.data.final)continue;
       const key=w.kode+':'+q.id;if(S.hasil.some(h=>h.remote===key))continue;
-      const g=grade(q,d.data.jawab||{});S.hasil.push({id:uid('hs'),kuisId:q.id,siswaId:w.id,waktu:d.data.waktu||Date.now(),skor:g.skor,ok:g.ok,total:g.total,remote:key,jawab:d.data.jawab||{}});nu++}catch(e){console.error(e)}}
+      const g=grade(q,d.data.jawab||{});S.hasil.push({id:uid('hs'),kuisId:q.id,siswaId:w.id,waktu:d.data.waktu||Date.now(),skor:g.skor,ok:g.ok,total:g.total,pts:g.pts,max:g.max,remote:key,jawab:d.data.jawab||{}});nu++}catch(e){console.error(e)}}
     save();render();toast(`Diambil: ${nk} kiriman tugas, ${na} absen, ${nu} hasil ujian`,'ok');
   }catch(e){setStat('Tersimpan');fbErr(e)}
 }
@@ -1496,7 +1501,7 @@ async function fbNilai(){
     for(const w of l){
       const P=pn(),r=nilaiAkhir(w.kelas,s,w.id),items=[];
       for(const kat of Object.keys(KAT))nilItems(w.kelas,s,kat).forEach(it=>{const v=scoreOf(it.id,w.id);if(v!=null&&P.rincian)items.push({kat:KAT[kat],judul:it.judul,nilai:v})});
-      const kuis=S.kuis.filter(q=>q.kelas===w.kelas).map(q=>{const h=S.hasil.filter(x=>x.kuisId===q.id&&x.siswaId===w.id);if(!h.length||!P.kuis||(q.nilaiMode||'sembunyi')==='sembunyi')return null;const best=h.reduce((a,b)=>b.skor>a.skor?b:a);const o={kuisId:q.id,judul:q.judul,skor:best.skor,ok:best.ok,total:best.total};if(q.nilaiMode==='pembahasan'&&best.jawab)o.review=q.soal.map((sl,i)=>{const a=best.jawab[sl.id],bn=grade({soal:[sl]},{[sl.id]:a}).ok===1;return{no:i+1,q:sl.q,jawab:ansText(sl,a),benar:bn,kunci:bn?'':keyText(sl)}});return o}).filter(Boolean);
+      const kuis=S.kuis.filter(q=>q.kelas===w.kelas).map(q=>{const h=S.hasil.filter(x=>x.kuisId===q.id&&x.siswaId===w.id);const man=((S.kuisNilai||{})[q.id]||{})[w.id];if((!h.length&&man==null)||!P.kuis||(q.nilaiMode||'sembunyi')==='sembunyi')return null;const best=h.length?h.reduce((a,b)=>b.skor>a.skor?b:a):{};const o={kuisId:q.id,judul:q.judul,skor:man!=null?man:best.skor,ok:best.ok,total:best.total,pts:best.pts,max:best.max,manual:man!=null};if(q.nilaiMode==='pembahasan'&&best.jawab)o.review=q.soal.map((sl,i)=>{const a=best.jawab[sl.id],bn=grade({soal:[sl]},{[sl.id]:a}).ok===1;return{no:i+1,q:sl.q,jawab:ansText(sl,a),benar:bn,kunci:bn?'':keyText(sl)}});return o}).filter(Boolean);
       await FBX.set(`murid/${w.kode}/nilai/ringkas`,{updated:Date.now(),semester:s,kktp:kt,items,kuis,akhir:!P.akhir?null:{tugas:r.tugas,ulangan:r.ulangan,praktik:r.praktik,na:r.na,status:r.na==null?'':r.na>=kt?'Tuntas':'Remedial'}});
       n++;if(n%20===0)setStat('Mengirim nilai '+n+'/'+l.length+'…','busy');
     }
@@ -1504,23 +1509,41 @@ async function fbNilai(){
   }catch(e){fbErr(e)}
 }
 /* ----- cadangan ke Firebase ----- */
-async function fbBackup(){
-  if(needLogin())return;
+let cloudT=null,skipCloud=false,cloudBusy=false,cloudChecked=false;
+function scheduleCloud(){try{if(skipCloud||!FBX||!isGuruLogin()||S.setting.autoCloud===false)return;clearTimeout(cloudT);cloudT=setTimeout(()=>fbBackup(true),window.__CLOUD_DELAY||30000)}catch(e){}}
+async function fbBackup(auto){
+  if(auto===true){if(!FBX||!isGuruLogin())return;if(cloudBusy){scheduleCloud();return}}else if(needLogin())return;
+  cloudBusy=true;
   try{
+    const ts=Date.now();S.setting.lastBackup=ts;
     const json=JSON.stringify(S),N=800000,parts=[];for(let i=0;i<json.length;i+=N)parts.push(json.slice(i,i+N));
-    const base='cadangan/'+fbUser.uid+'/bagian';
-    for(let i=0;i<parts.length;i++)await FBX.set(base+'/p'+pad(i),{i,n:parts.length,teks:parts[i],updated:Date.now()});
-    const old=await FBX.list(base);for(const d of old){if(d.data.i>=parts.length)await FBX.del(d.path)}
-    S.setting.lastBackup=Date.now();save();render();toast('Cadangan tersimpan di Firebase ('+parts.length+' bagian)','ok');
-  }catch(e){fbErr(e)}
+    const base='cadangan/'+fbUser.uid+'/bagian',prev=S.setting.cloudParts||0;
+    for(let i=0;i<parts.length;i++)await FBX.set(base+'/p'+pad(i),{i,n:parts.length,teks:parts[i],updated:ts});
+    if(auto!==true){const old=await FBX.list(base);for(const d of old){if(d.data.i>=parts.length)await FBX.del(d.path)}}
+    else for(let i=parts.length;i<prev;i++)await FBX.del(base+'/p'+pad(i));
+    S.setting.cloudParts=parts.length;
+    skipCloud=true;save();skipCloud=false;
+    if(auto===true)setStat('Tersimpan · cadangan Firebase '+new Date(ts).toTimeString().slice(0,5));
+    else{render();toast('Cadangan tersimpan di Firebase ('+parts.length+' bagian)','ok')}
+  }catch(e){skipCloud=false;if(auto===true)setStat('Cadangan Firebase gagal','err');else fbErr(e)}
+  finally{cloudBusy=false}
 }
-async function fbRestore(){
+async function checkCloud(){
+  if(cloudChecked)return;cloudChecked=true;
+  try{
+    const d=await FBX.get('cadangan/'+fbUser.uid+'/bagian/p00');
+    if(d&&d.updated>(S.setting.savedAt||0)+60000&&d.updated>(S.setting.lastBackup||0)+60000){
+      ask('Ada cadangan Firebase yang lebih baru. Pulihkan?',()=>fbRestore(true),'Pulihkan','Cadangan dibuat '+new Date(d.updated).toLocaleString('id-ID')+'. Data di perangkat ini akan diganti. Pilih Batal jika data di perangkat ini yang benar.');
+    }else setTimeout(()=>fbBackup(true),3000);
+  }catch(e){}
+}
+async function fbRestore(sk){
   if(needLogin())return;
   try{
-    const l=(await FBX.list('cadangan/'+fbUser.uid+'/bagian')).sort((a,b)=>a.data.i-b.data.i);
+    const all=await FBX.list('cadangan/'+fbUser.uid+'/bagian');const mx=Math.max(0,...all.map(x=>x.data.updated||0));const l=all.filter(x=>(x.data.updated||0)===mx).sort((a,b)=>a.data.i-b.data.i);
     if(!l.length||l.length!==l[0].data.n){toast('Cadangan tidak ditemukan atau tidak lengkap.','bad');return}
     const d=JSON.parse(l.map(x=>x.data.teks).join(''));
-    ask('Pulihkan dari cadangan Firebase?',()=>{S=d;fixState();UI.absBulan=null;save(true);render();toast('Data dipulihkan','ok')},'Lanjut','Data di perangkat ini akan diganti dengan cadangan terakhir ('+new Date(l[0].data.updated).toLocaleString('id-ID')+').');
+    const apply=()=>{skipCloud=true;S=d;fixState();UI.absBulan=null;save(true);skipCloud=false;render();toast('Data dipulihkan dari Firebase','ok')};if(sk===true)apply();else ask('Pulihkan dari cadangan Firebase?',apply,'Lanjut','Data di perangkat ini akan diganti dengan cadangan terakhir ('+new Date(l[0].data.updated).toLocaleString('id-ID')+').');
   }catch(e){fbErr(e)}
 }
 
@@ -1552,7 +1575,7 @@ function vPortal(){
       <button class="btn primary" data-act="fb-nilai" style="margin-top:6px">Kirim nilai</button><p class="mut sm" style="margin-top:8px">Mengubah centang di atas langsung memperbarui siswa bila Anda sudah masuk.</p></div></div>`;
   }else{
     body=`<div class="card pad"><h2 style="margin-bottom:6px">Cadangan data guru di Firebase</h2><p class="mut" style="margin-bottom:12px">Menyimpan seluruh data jurnal, absensi, dan nilai ke akun Firebase Anda, supaya aman bila peramban dibersihkan atau berganti perangkat. Berkas unggahan tidak ikut. ${S.setting.lastBackup?'Cadangan terakhir: <b>'+new Date(S.setting.lastBackup).toLocaleString('id-ID')+'</b>.':'Belum pernah dicadangkan.'}</p>
-    <div class="row"><button class="btn primary" data-act="fb-backup">Cadangkan sekarang</button><button class="btn" data-act="fb-restore">Pulihkan dari cadangan</button></div></div>`;
+    <label class="chk" style="padding-top:0;margin-bottom:12px"><input type="checkbox" data-chg="autocloud" ${S.setting.autoCloud!==false?'checked':''}> Cadangkan otomatis ke Firebase (±30 detik setelah ada perubahan, selama Bapak masuk sebagai guru)</label><div class="row"><button class="btn primary" data-act="fb-backup">Cadangkan sekarang</button><button class="btn" data-act="fb-restore">Pulihkan dari cadangan</button></div></div>`;
   }
   return head+tabs+body;
 }

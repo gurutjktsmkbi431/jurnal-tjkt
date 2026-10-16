@@ -131,10 +131,11 @@ const VIEW={
     ${a?'<p class="mut sm" style="margin-top:8px">Absen sudah tercatat. Hubungi guru jika perlu diubah.</p>':w==='belum'?'<p class="mut sm" style="margin-top:8px">Absen belum dibuka.</p>':w==='tutup'?'<p class="mut sm" style="margin-top:8px">Absen sudah ditutup. Hubungi guru jika kamu hadir.</p>':`<label style="display:block;margin-top:10px"><span class="sm mut">Catatan (opsional, untuk sakit/ijin)</span><input type="text" data-cat="${x.id}" maxlength="250"></label><div class="row"><button class="btn primary" data-abs="${x.id}" data-s="H">Hadir</button><button class="btn" data-abs="${x.id}" data-s="S">Sakit</button><button class="btn" data-abs="${x.id}" data-s="I">Ijin</button></div>`}</div>`}).join('')||empty('Tidak ada absen yang dibuka.')},
   ujian(){const l=PUB&&PUB.kuis||[];return l.map(q=>{const u=UJI[q.id],fin=u&&u.final,w=win(q),mulaiOk=!fin&&(w==='buka'||(u&&!fin));
     const f=v=>v==null?'–':(Math.round(v*10)/10).toString().replace('.',',');
-    const hs=(NIL&&NIL.kuis||[]).find(k=>k.kuisId===q.id),vis=NT().kuis&&q.nilaiMode&&q.nilaiMode!=='sembunyi';
+    let hs=(NIL&&NIL.kuis||[]).find(k=>k.kuisId===q.id),prov=false;const vis=NT().kuis&&q.nilaiMode&&q.nilaiMode!=='sembunyi';
+    if(!hs&&vis&&fin&&q.langsung&&u.jawab&&q.soal.every(s=>s.key!==undefined)){const g=gradeLocal(q,u.jawab);hs={skor:g.skor,ok:g.ok,total:g.total,pts:g.pts,max:g.max,review:q.nilaiMode==='pembahasan'?g.review:[]};prov=true}
     let hasil='';
     if(fin){
-      if(vis&&hs)hasil=`<div class="card" style="background:var(--s2);text-align:center;margin-top:12px"><div class="mut sm">Nilai ujian</div><div class="big">${f(hs.skor)}</div><div class="mut sm">${hs.ok!=null?hs.ok+' benar dari '+hs.total+' soal':''}</div>${(hs.review||[]).length?`<details style="text-align:left;margin-top:10px"><summary style="cursor:pointer;font-weight:600">Lihat pembahasan</summary>${hs.review.map(r=>`<div style="padding:8px 0;border-bottom:1px solid var(--line)"><b>${r.no}.</b> ${esc(r.q)}<div class="sm mut">Jawabanmu: ${esc(r.jawab)}${r.benar?'':' · Kunci: '+esc(r.kunci)}</div><span class="chip ${r.benar?'ok':'bad'}">${r.benar?'Benar':'Salah'}</span></div>`).join('')}</details>`:''}</div>`;
+      if(vis&&hs)hasil=`<div class="card" style="background:var(--s2);text-align:center;margin-top:12px"><div class="mut sm">Nilai ujian${prov?' (sementara, dihitung otomatis)':hs.manual?' (diberikan guru)':''}</div><div class="big">${f(hs.skor)}</div><div class="mut sm">${hs.ok!=null?hs.ok+' benar dari '+hs.total+' soal':''}${hs.max?' · '+f(hs.pts)+' dari '+f(hs.max)+' poin':''}</div>${prov?'<div class="mut sm" style="margin-top:6px">Nilai resmi bisa diperbarui guru setelah diperiksa.</div>':''}${(hs.review||[]).length?`<details style="text-align:left;margin-top:10px"><summary style="cursor:pointer;font-weight:600">Lihat pembahasan</summary>${hs.review.map(r=>`<div style="padding:8px 0;border-bottom:1px solid var(--line)"><b>${r.no}.</b> ${esc(r.q)}<div class="sm mut">Jawabanmu: ${esc(r.jawab)}${r.benar?'':' · Kunci: '+esc(r.kunci)}</div><span class="chip ${r.benar?'ok':'bad'}">${r.benar?'Benar':'Salah'}</span></div>`).join('')}</details>`:''}</div>`;
       else if(!vis)hasil='<p class="mut sm" style="margin-top:10px">Nilai ujian ini disembunyikan oleh guru.</p>';
       else hasil='<p class="mut sm" style="margin-top:10px">Jawabanmu sudah diterima. Nilai muncul setelah guru memeriksa. Tekan Segarkan nanti.</p>';
     }
@@ -151,6 +152,13 @@ const VIEW={
     `<p class="mut sm" style="margin-top:10px">Diperbarui ${NIL.updated?new Date(NIL.updated).toLocaleString('id-ID'):''}</p>`;
   }
 };
+const nt=x=>String(x==null?'':x).trim().toLowerCase().replace(/\s+/g,' ');
+function ansT(s,a){if(a==null||a==='')return '(kosong)';if(s.t==='pg')return a+'. '+((s.opts.find(o=>o.k===a)||{}).v||'');return String(a)}
+function keyT(s){if(s.t==='pg')return s.key+'. '+((s.opts.find(o=>o.k===s.key)||{}).v||'');return String(s.key||'').split('|')[0]}
+function gradeLocal(q,j){let pts=0,max=0,ok=0;const review=[];q.soal.forEach((s,i)=>{const p=Number(s.poin)>0?Number(s.poin):1;max+=p;const a=j[s.id];let c=false;
+  if(s.t==='isian')c=a!=null&&String(s.key||'').split('|').map(nt).includes(nt(a));else c=a!=null&&a===s.key;
+  if(c){ok++;pts+=p}review.push({no:i+1,q:s.q,jawab:ansT(s,a),benar:c,kunci:c?'':keyT(s)})});
+  return{ok,total:q.soal.length,pts,max,skor:max?Math.round(pts/max*1000)/10:0,review}}
 function bind(){
   document.querySelectorAll('[data-kirim]').forEach(b=>b.onclick=async()=>{
     const id=b.dataset.kirim,ta=document.querySelector(`[data-isi="${id}"]`),isi=ta.value.trim();
