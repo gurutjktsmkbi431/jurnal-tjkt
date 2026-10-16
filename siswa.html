@@ -65,8 +65,10 @@ const LS_K='portalSiswaKode';
 
 async function boot(){
   const a=$('#app');a.innerHTML='<div class="login card"><p>Memuat…</p></div>';
-  try{FBX=await FB.init();await FBX.auth.anon()}
-  catch(e){a.innerHTML=`<div class="login card"><h1>Portal Siswa</h1><p class="err">${e.message==='NOCONFIG'?'Portal belum dikonfigurasi oleh guru.':'Tidak bisa terhubung. Periksa internet lalu muat ulang.'}</p></div>`;return}
+  try{if(typeof FB==='undefined')throw new Error('NOFBAPI');FBX=await FB.init();await FBX.auth.anon()}
+  catch(e){const m=e&&e.message||'',c=(e&&(e.code||e.name))||'';
+    const t=m==='NOCONFIG'?'Portal belum dikonfigurasi oleh guru (firebase-config.js belum terisi).':m==='NOFBAPI'?'Berkas fbapi.js tidak termuat. Pastikan fbapi.js ada di GitHub bersama siswa.html.':'Tidak bisa terhubung. Periksa internet lalu muat ulang.';
+    a.innerHTML=`<div class="login card"><h1>Portal Siswa</h1><p class="err">${esc(t)}</p><p class="mut sm" style="margin-top:10px">Keterangan teknis (kirim ke guru): ${esc(c+' '+m)}</p></div>`;return}
   const q=new URLSearchParams(location.search).get('k')||localStorage.getItem(LS_K);
   if(q)await masuk(q,true);else loginView();
 }
@@ -107,36 +109,52 @@ function render(){
   bind();
 }
 const empty=(t)=>`<div class="card mut" style="text-align:center">${t}</div>`;
+const BLN2=BLN;
+function win(x){const n=Date.now();if(x.jb&&n<Date.parse(x.jb))return 'belum';if(x.jt&&n>Date.parse(x.jt))return 'tutup';return 'buka'}
+const fDT=s=>{const d=new Date(s);return isNaN(d)?'':d.getDate()+' '+BLN[d.getMonth()]+' '+String(d.getHours()).padStart(2,'0')+'.'+String(d.getMinutes()).padStart(2,'0')};
+const NT=()=>Object.assign({akhir:true,rincian:true,kuis:true},(PUB&&PUB.nilaiTampil)||{});
+const winChip=x=>(x.jb||x.jt)?`<span class="chip info">${x.jb?'Dibuka '+fDT(x.jb):''}${x.jb&&x.jt?' · ':''}${x.jt?'Ditutup '+fDT(x.jt):''}</span>`:'';
 const VIEW={
   beranda(){
-    const t=todayS(),tg=(PUB&&PUB.tugas||[]).filter(x=>!KIR[x.id]&&(!x.tenggat||x.tenggat>=t)),ab=(PUB&&PUB.absen||[]).filter(x=>!ABS[x.id]),uj=(PUB&&PUB.kuis||[]).filter(q=>!(UJI[q.id]&&UJI[q.id].final));
-    return `<div class="card"><h2>Halo, ${esc(ME.nama.split(' ')[0])}</h2><p class="mut">Yang perlu kamu kerjakan:</p><div class="chips"><span class="chip ${tg.length?'warn':'ok'}">${tg.length} tugas belum dikumpulkan</span><span class="chip ${ab.length?'warn':'ok'}">${ab.length} absen terbuka</span><span class="chip ${uj.length?'warn':'ok'}">${uj.length} ujian tersedia</span></div></div>
+    const t=todayS(),P=PUB||{},tg=(P.tugas||[]).filter(x=>!KIR[x.id]&&win(x)==='buka'&&(!x.tenggat||x.tenggat>=t)),ab=(P.absen||[]).filter(x=>!ABS[x.id]&&win(x)==='buka'),uj=(P.kuis||[]).filter(q=>!(UJI[q.id]&&UJI[q.id].final)&&win(q)==='buka');
+    const an=(P.pengumuman||[]).map(p=>`<div class="card" style="border-left:5px solid var(--acc)"><h3>${esc(p.judul)}</h3>${p.tgl?`<div class="mut sm">${fT(p.tgl)}</div>`:''}${p.isi?`<div class="body">${esc(p.isi)}</div>`:''}</div>`).join('');
+    return `${an}<div class="card"><h2>Halo, ${esc(ME.nama.split(' ')[0])}</h2><p class="mut">Yang perlu kamu kerjakan:</p><div class="chips"><span class="chip ${tg.length?'warn':'ok'}">${tg.length} tugas belum dikumpulkan</span><span class="chip ${ab.length?'warn':'ok'}">${ab.length} absen terbuka</span><span class="chip ${uj.length?'warn':'ok'}">${uj.length} ujian tersedia</span></div></div>
     ${PUB?'':empty('Belum ada konten dari guru untuk kelasmu.')}`;
   },
-  materi(){const l=PUB&&PUB.materi||[];return l.map(m=>`<div class="card"><h3>${esc(m.judul)}</h3><div class="chips"><span class="chip">${esc(m.jenis)}</span>${m.elemen?`<span class="chip info">${esc(m.elemen)}</span>`:''}${m.tgl?`<span class="chip">${fT(m.tgl)}</span>`:''}</div>${m.deskripsi?`<div class="body">${esc(m.deskripsi)}</div>`:''}<div class="chips">${links(m)}</div></div>`).join('')||empty('Belum ada materi.')},
-  tugas(){const l=PUB&&PUB.tugas||[],t=todayS();return l.map(x=>{const k=KIR[x.id],late=x.tenggat&&x.tenggat<t;
-    return `<div class="card"><h3>${esc(x.judul)}</h3><div class="chips"><span class="chip">${esc(x.jenis)}</span>${x.tenggat?`<span class="chip ${late&&!k?'bad':'warn'}">Tenggat ${fT(x.tenggat)}</span>`:''}${k?'<span class="chip ok">Sudah dikirim</span>':''}</div>${x.instruksi?`<div class="body">${esc(x.instruksi)}</div>`:''}<div class="chips">${links(x)}${x.link?`<a class="chip info" href="${esc(safeUrl(x.link))}" target="_blank" rel="noopener noreferrer">Tautan pengumpulan guru</a>`:''}</div>
-    <label style="display:block;margin-top:12px"><span class="sm mut">Tempel tautan hasil kerjamu (Drive, YouTube, dll) atau tulis jawaban singkat</span><textarea rows="3" data-isi="${x.id}" maxlength="2900">${esc(k?k.isi:'')}</textarea></label>
-    <div class="row"><button class="btn primary" data-kirim="${x.id}">${k?'Kirim ulang':'Kumpulkan'}</button></div></div>`}).join('')||empty('Belum ada tugas.')},
-  absen(){const l=PUB&&PUB.absen||[];return l.map(x=>{const a=ABS[x.id];
-    return `<div class="card"><h3>${fT(x.tgl)} · jam ${esc(x.jam)}</h3><div class="chips"><span class="chip ${x.mode==='PJJ'?'warn':''}">${esc(x.mode)}</span>${a?`<span class="chip ok">Tercatat: ${({H:'Hadir',S:'Sakit',I:'Ijin'})[a.status]}</span>`:''}${x.link?`<a class="chip info" href="${esc(safeUrl(x.link))}" target="_blank" rel="noopener noreferrer">Buka kelas online</a>`:''}</div>
-    ${a?'<p class="mut sm" style="margin-top:8px">Absen sudah tercatat. Hubungi guru jika perlu diubah.</p>':`<label style="display:block;margin-top:10px"><span class="sm mut">Catatan (opsional, untuk sakit/ijin)</span><input type="text" data-cat="${x.id}" maxlength="250"></label><div class="row"><button class="btn primary" data-abs="${x.id}" data-s="H">Hadir</button><button class="btn" data-abs="${x.id}" data-s="S">Sakit</button><button class="btn" data-abs="${x.id}" data-s="I">Ijin</button></div>`}</div>`}).join('')||empty('Tidak ada absen yang dibuka.')},
-  ujian(){const l=PUB&&PUB.kuis||[];return l.map(q=>{const u=UJI[q.id],fin=u&&u.final;
-    return `<div class="card"><h3>${esc(q.judul)}</h3><div class="chips"><span class="chip">${esc(q.jenis)}</span><span class="chip">${q.soal.length} soal</span><span class="chip">${q.durasi} menit</span>${fin?'<span class="chip ok">Sudah dikerjakan</span>':u?'<span class="chip warn">Sedang berjalan</span>':''}</div>${q.petunjuk?`<div class="body">${esc(q.petunjuk)}</div>`:''}
-    <div class="row"><button class="btn primary" data-uji="${q.id}" ${fin?'disabled':''}>${u&&!fin?'Lanjutkan ujian':'Mulai ujian'}</button></div>${fin?'<p class="mut sm" style="margin-top:8px">Nilai akan muncul di tab Nilai setelah guru memeriksa.</p>':'<p class="mut sm" style="margin-top:8px">Ujian hanya bisa dikerjakan satu kali. Pastikan sinyal stabil sebelum mulai.</p>'}</div>`}).join('')||empty('Belum ada ujian.')},
+  materi(){const l=(PUB&&PUB.materi||[]).filter(m=>win(m)==='buka');return l.map(m=>`<div class="card"><h3>${esc(m.judul)}</h3><div class="chips"><span class="chip">${esc(m.jenis)}</span>${m.elemen?`<span class="chip info">${esc(m.elemen)}</span>`:''}${m.tgl?`<span class="chip">${fT(m.tgl)}</span>`:''}${m.jt?`<span class="chip info">Tersedia sampai ${fDT(m.jt)}</span>`:''}</div>${m.deskripsi?`<div class="body">${esc(m.deskripsi)}</div>`:''}<div class="chips">${links(m)}</div></div>`).join('')||empty('Belum ada materi.')},
+  tugas(){const l=(PUB&&PUB.tugas||[]).filter(x=>win(x)!=='belum'),t=todayS();return l.map(x=>{const k=KIR[x.id],closed=win(x)==='tutup',late=x.tenggat&&x.tenggat<t;
+    return `<div class="card"><h3>${esc(x.judul)}</h3><div class="chips"><span class="chip">${esc(x.jenis)}</span>${x.tenggat?`<span class="chip ${late&&!k?'bad':'warn'}">Tenggat ${fT(x.tenggat)}</span>`:''}${x.jt?`<span class="chip ${closed?'bad':'info'}">${closed?'Pengumpulan ditutup':'Ditutup '+fDT(x.jt)}</span>`:''}${k?'<span class="chip ok">Sudah dikirim</span>':''}</div>${x.instruksi?`<div class="body">${esc(x.instruksi)}</div>`:''}<div class="chips">${links(x)}${x.link?`<a class="chip info" href="${esc(safeUrl(x.link))}" target="_blank" rel="noopener noreferrer">Tautan pengumpulan guru</a>`:''}</div>
+    ${closed?`<p class="mut sm" style="margin-top:10px">${k?'Kiriman kamu: '+esc(k.isi):'Pengumpulan sudah ditutup oleh guru.'}</p>`:`<label style="display:block;margin-top:12px"><span class="sm mut">Tempel tautan hasil kerjamu (Drive, YouTube, dll) atau tulis jawaban singkat</span><textarea rows="3" data-isi="${x.id}" maxlength="2900">${esc(k?k.isi:'')}</textarea></label>
+    <div class="row"><button class="btn primary" data-kirim="${x.id}">${k?'Kirim ulang':'Kumpulkan'}</button></div>`}</div>`}).join('')||empty('Belum ada tugas.')},
+  absen(){const l=PUB&&PUB.absen||[];return l.map(x=>{const a=ABS[x.id],w=win(x);
+    return `<div class="card"><h3>${fT(x.tgl)} · jam ${esc(x.jam)}</h3><div class="chips"><span class="chip ${x.mode==='PJJ'?'warn':''}">${esc(x.mode)}</span>${a?`<span class="chip ok">Tercatat: ${({H:'Hadir',S:'Sakit',I:'Ijin'})[a.status]}</span>`:''}${winChip(x)}${x.link?`<a class="chip info" href="${esc(safeUrl(x.link))}" target="_blank" rel="noopener noreferrer">Buka kelas online</a>`:''}</div>
+    ${a?'<p class="mut sm" style="margin-top:8px">Absen sudah tercatat. Hubungi guru jika perlu diubah.</p>':w==='belum'?'<p class="mut sm" style="margin-top:8px">Absen belum dibuka.</p>':w==='tutup'?'<p class="mut sm" style="margin-top:8px">Absen sudah ditutup. Hubungi guru jika kamu hadir.</p>':`<label style="display:block;margin-top:10px"><span class="sm mut">Catatan (opsional, untuk sakit/ijin)</span><input type="text" data-cat="${x.id}" maxlength="250"></label><div class="row"><button class="btn primary" data-abs="${x.id}" data-s="H">Hadir</button><button class="btn" data-abs="${x.id}" data-s="S">Sakit</button><button class="btn" data-abs="${x.id}" data-s="I">Ijin</button></div>`}</div>`}).join('')||empty('Tidak ada absen yang dibuka.')},
+  ujian(){const l=PUB&&PUB.kuis||[];return l.map(q=>{const u=UJI[q.id],fin=u&&u.final,w=win(q),mulaiOk=!fin&&(w==='buka'||(u&&!fin));
+    const f=v=>v==null?'–':(Math.round(v*10)/10).toString().replace('.',',');
+    const hs=(NIL&&NIL.kuis||[]).find(k=>k.kuisId===q.id),vis=NT().kuis&&q.nilaiMode&&q.nilaiMode!=='sembunyi';
+    let hasil='';
+    if(fin){
+      if(vis&&hs)hasil=`<div class="card" style="background:var(--s2);text-align:center;margin-top:12px"><div class="mut sm">Nilai ujian</div><div class="big">${f(hs.skor)}</div><div class="mut sm">${hs.ok!=null?hs.ok+' benar dari '+hs.total+' soal':''}</div>${(hs.review||[]).length?`<details style="text-align:left;margin-top:10px"><summary style="cursor:pointer;font-weight:600">Lihat pembahasan</summary>${hs.review.map(r=>`<div style="padding:8px 0;border-bottom:1px solid var(--line)"><b>${r.no}.</b> ${esc(r.q)}<div class="sm mut">Jawabanmu: ${esc(r.jawab)}${r.benar?'':' · Kunci: '+esc(r.kunci)}</div><span class="chip ${r.benar?'ok':'bad'}">${r.benar?'Benar':'Salah'}</span></div>`).join('')}</details>`:''}</div>`;
+      else if(!vis)hasil='<p class="mut sm" style="margin-top:10px">Nilai ujian ini disembunyikan oleh guru.</p>';
+      else hasil='<p class="mut sm" style="margin-top:10px">Jawabanmu sudah diterima. Nilai muncul setelah guru memeriksa. Tekan Segarkan nanti.</p>';
+    }
+    return `<div class="card"><h3>${esc(q.judul)}</h3><div class="chips"><span class="chip">${esc(q.jenis)}</span><span class="chip">${q.soal.length} soal</span><span class="chip">${q.durasi} menit</span>${winChip(q)}${fin?'<span class="chip ok">Sudah dikerjakan</span>':u?'<span class="chip warn">Sedang berjalan</span>':''}${!fin&&w==='belum'?'<span class="chip warn">Belum dibuka</span>':''}${!fin&&w==='tutup'&&!u?'<span class="chip bad">Sudah ditutup</span>':''}</div>${q.petunjuk?`<div class="body">${esc(q.petunjuk)}</div>`:''}
+    <div class="row"><button class="btn primary" data-uji="${q.id}" ${mulaiOk?'':'disabled'}>${u&&!fin?'Lanjutkan ujian':'Mulai ujian'}</button></div>${fin?hasil:'<p class="mut sm" style="margin-top:8px">Ujian hanya bisa dikerjakan satu kali. Pastikan sinyal stabil sebelum mulai.</p>'}</div>`}).join('')||empty('Belum ada ujian.')},
   nilai(){
     if(!NIL)return empty('Nilai belum dikirim oleh guru.');
-    const a=NIL.akhir||{},f=v=>v==null?'–':(Math.round(v*10)/10).toString().replace('.',',');
-    return `<div class="card" style="text-align:center"><p class="mut">Nilai akhir semester ${esc(NIL.semester||'')}</p><div class="big">${f(a.na)}</div>${a.status?`<p style="margin-top:8px"><span class="chip ${a.status==='Tuntas'?'ok':'bad'}">${a.status}</span> <span class="mut sm">KKTP ${NIL.kktp}</span></p>`:''}
-    <p class="mut sm" style="margin-top:8px">Tugas ${f(a.tugas)} · Ulangan ${f(a.ulangan)} · Praktik ${f(a.praktik)}</p></div>
-    ${(NIL.items||[]).length?`<div class="card"><h3>Rincian nilai</h3><table><tbody>${NIL.items.map(i=>`<tr><td>${esc(i.judul)}<div class="mut sm">${esc(i.kat)}</div></td><td style="text-align:right"><b>${f(i.nilai)}</b></td></tr>`).join('')}</tbody></table></div>`:''}
-    ${(NIL.kuis||[]).length?`<div class="card"><h3>Hasil ujian online</h3><table><tbody>${NIL.kuis.map(i=>`<tr><td>${esc(i.judul)}</td><td style="text-align:right"><b>${f(i.skor)}</b></td></tr>`).join('')}</tbody></table></div>`:''}
-    <p class="mut sm" style="margin-top:10px">Diperbarui ${NIL.updated?new Date(NIL.updated).toLocaleString('id-ID'):''}</p>`;
+    const T=NT(),a=NIL.akhir,f=v=>v==null?'–':(Math.round(v*10)/10).toString().replace('.',',');
+    const kuis=(NIL.kuis||[]).filter(k=>{const q=((PUB&&PUB.kuis)||[]).find(x=>x.id===k.kuisId);return T.kuis&&(!q||(q.nilaiMode&&q.nilaiMode!=='sembunyi'))});
+    return (T.akhir&&a?`<div class="card" style="text-align:center"><p class="mut">Nilai akhir semester ${esc(NIL.semester||'')}</p><div class="big">${f(a.na)}</div>${a.status?`<p style="margin-top:8px"><span class="chip ${a.status==='Tuntas'?'ok':'bad'}">${a.status}</span> <span class="mut sm">KKTP ${NIL.kktp}</span></p>`:''}
+    <p class="mut sm" style="margin-top:8px">Tugas ${f(a.tugas)} · Ulangan ${f(a.ulangan)} · Praktik ${f(a.praktik)}</p></div>`:`<div class="card mut" style="text-align:center">Nilai akhir belum ditampilkan oleh guru.</div>`)+
+    (T.rincian&&(NIL.items||[]).length?`<div class="card"><h3>Rincian nilai</h3><table><tbody>${NIL.items.map(i=>`<tr><td>${esc(i.judul)}<div class="mut sm">${esc(i.kat)}</div></td><td style="text-align:right"><b>${f(i.nilai)}</b></td></tr>`).join('')}</tbody></table></div>`:'')+
+    (kuis.length?`<div class="card"><h3>Hasil ujian online</h3><table><tbody>${kuis.map(i=>`<tr><td>${esc(i.judul)}</td><td style="text-align:right"><b>${f(i.skor)}</b></td></tr>`).join('')}</tbody></table></div>`:'')+
+    `<p class="mut sm" style="margin-top:10px">Diperbarui ${NIL.updated?new Date(NIL.updated).toLocaleString('id-ID'):''}</p>`;
   }
 };
 function bind(){
   document.querySelectorAll('[data-kirim]').forEach(b=>b.onclick=async()=>{
     const id=b.dataset.kirim,ta=document.querySelector(`[data-isi="${id}"]`),isi=ta.value.trim();
+    const tx=(PUB.tugas||[]).find(x=>x.id===id);if(tx&&win(tx)!=='buka'){toast('Pengumpulan sudah ditutup.');render();return}
     if(!isi){toast('Isi dulu tautan atau jawabanmu.');return}
     b.disabled=true;
     try{const d={tugasId:id,isi,waktu:Date.now()};await FBX.set(`murid/${ME.kode}/kiriman/${id}`,d);KIR[id]=d;toast('Tugas terkirim');render()}
@@ -156,6 +174,7 @@ async function mulaiUjian(id){
   const q=PUB.kuis.find(x=>x.id===id);if(!q)return;
   let u=UJI[id];
   if(u&&u.final){toast('Ujian ini sudah dikerjakan.');return}
+  if(!u&&win(q)!=='buka'){toast(win(q)==='belum'?'Ujian belum dibuka.':'Ujian sudah ditutup.');return}
   const key='ujian:'+ME.kode+':'+id;
   let loc=null;try{loc=JSON.parse(localStorage.getItem(key)||'null')}catch(e){}
   try{

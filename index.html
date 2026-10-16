@@ -320,8 +320,12 @@ function save(now){
   const go=()=>{try{localStorage.setItem(LS_KEY,JSON.stringify(S));storeOK=true;setStat('Tersimpan '+new Date().toTimeString().slice(0,5))}catch(e){storeOK=false;setStat('Gagal menyimpan','err');toast('Penyimpanan peramban penuh atau diblokir. Unduh cadangan di menu Pengaturan.','bad')}};
   if(now){go()}else{setStat('Menyimpan…','busy');saveT=setTimeout(go,500)}
 }
+function fixState(){
+  ['sesi','jurnal','adm','atp','materi','tugas','penilaian','kuis','hasil','catatan','libur','siswa','jadwal','kelas','pengumuman'].forEach(c=>{if(!Array.isArray(S[c]))S[c]=[]});
+  S.sub=S.sub||{};S.scores=S.scores||{};S.sesi.forEach(x=>{if(!x.hadir||typeof x.hadir!=='object')x.hadir={}});S.kuis.forEach(q=>{if(!Array.isArray(q.soal))q.soal=[]});
+}
 function loadState(){
-  try{const r=localStorage.getItem(LS_KEY);if(r){S=JSON.parse(r);return}}catch(e){storeOK=false}
+  try{const r=localStorage.getItem(LS_KEY);if(r){S=JSON.parse(r);fixState();return}}catch(e){storeOK=false}
   S=seed();
 }
 
@@ -349,7 +353,7 @@ function seed(){
       {id:'jd5',kelas:'XI-TJKT',hari:4,a:9,b:11,mapel:'MPL',ruang:''}
     ],
     libur:[{id:'lb1',tgl:'2026-12-25',sampai:'',ket:'Hari Raya Natal'},{id:'lb2',tgl:'2027-01-01',sampai:'',ket:'Tahun Baru 2027'}],
-    sesi:[],jurnal:[],adm:[],atp:[],materi:[],tugas:[],sub:{},penilaian:[],scores:{},kuis:[],hasil:[],catatan:[]
+    pengumuman:[],sesi:[],jurnal:[],adm:[],atp:[],materi:[],tugas:[],sub:{},penilaian:[],scores:{},kuis:[],hasil:[],catatan:[]
   };
 }
 
@@ -501,7 +505,7 @@ async function saveModal(){
   if(MODAL.fields.some(f=>f.t==='lampiran'))v.lampiran=[...MODAL.lamp];
   const keep=new Set(MODAL.lamp.filter(x=>x.k==='f').map(x=>x.fid));
   const removed=[...MODAL.orig].filter(id=>!keep.has(id));
-  const r=await MODAL.onSave(v);
+  let r;try{r=await MODAL.onSave(v)}catch(e){console.error(e);toast('Terjadi kesalahan: '+(e&&e.message),'bad');return}
   if(r===false)return;
   removed.forEach(id=>FileDB.del(id));
   MODAL=null;$('#modal').hidden=true;$('#modal').innerHTML='';
@@ -574,7 +578,7 @@ const ENT={
     beforeSave:v=>{ensureSesi(v.kelas,v.tgl,v.jam);v.semester=semOf(v.tgl)}},
   sesi:{title:'pertemuan absensi',
     def:()=>({kelas:S.setting.kelas,tgl:todayStr(),jam:'',mode:'Tatap muka',link:''}),
-    fields:()=>[{k:'tgl',l:'Tanggal',t:'date',req:1},F.kelas(),{k:'jam',l:'Jam ke',t:'text',ph:'mis. 3-5',req:1},{k:'mode',l:'Metode',t:'select',opts:['Tatap muka','PJJ']},{k:'link',l:'Tautan PJJ (Meet / Zoom / Google Form absen)',t:'text',w:'full',ph:'https://…'},{k:'buka',l:'Buka absen mandiri untuk siswa di portal',t:'check'},{t:'info',k:'i',html:sesiInfo}],
+    fields:()=>[{k:'tgl',l:'Tanggal',t:'date',req:1},F.kelas(),{k:'jam',l:'Jam ke',t:'text',ph:'mis. 3-5',req:1},{k:'mode',l:'Metode',t:'select',opts:['Tatap muka','PJJ']},{k:'link',l:'Tautan PJJ (Meet / Zoom / Google Form absen)',t:'text',w:'full',ph:'https://…'},{k:'buka',l:'Buka absen mandiri untuk siswa di portal',t:'check'},{k:'jadwalBuka',l:'Absen dibuka pada (opsional)',t:'datetime-local'},{k:'jadwalTutup',l:'Absen ditutup pada (opsional)',t:'datetime-local'},{t:'info',k:'i',html:sesiInfo}],
     validate:(v,id)=>{v.jam=normJam(v.jam);if(!parseJam(v.jam))return 'Jam ke tidak valid. Contoh: 3 atau 3-5.';
       if(S.sesi.some(s=>s.id!==id&&s.kelas===v.kelas&&s.tgl===v.tgl&&s.jam===v.jam))return 'Pertemuan ini sudah ada.';return ''},
     afterSave:v=>{UI.absBulan=v.tgl.slice(0,7);S.setting.kelas=v.kelas;S.setting.semester=semOf(v.tgl);const x=findSesi(v.kelas,v.tgl,v.jam);if(x)UI.absSesi=x.id}},
@@ -592,13 +596,13 @@ const ENT={
   materi:{title:'materi pembelajaran',wide:1,media:1,
     def:()=>Object.assign(base(),{tgl:todayStr(),jenis:'Materi',terbit:true}),
     fields:()=>[F.kelas(),F.sem(),F.elemen(),{k:'jenis',l:'Jenis',t:'select',opts:['Materi','Video','Modul ajar','Lembar kerja','Slide presentasi','Lainnya']},
-      {k:'judul',l:'Judul materi',t:'text',req:1,w:'full'},{k:'tgl',l:'Tanggal dibagikan',t:'date'},{k:'deskripsi',l:'Deskripsi',t:'textarea',rows:4,w:'full'},{k:'terbit',l:'Tampilkan di portal siswa',t:'check'},
+      {k:'judul',l:'Judul materi',t:'text',req:1,w:'full'},{k:'tgl',l:'Tanggal dibagikan',t:'date'},{k:'deskripsi',l:'Deskripsi',t:'textarea',rows:4,w:'full'},{k:'terbit',l:'Tampilkan di portal siswa',t:'check'},{k:'jadwalBuka',l:'Mulai tampil / dibuka (opsional)',t:'datetime-local',hint:'Kosongkan = langsung'},{k:'jadwalTutup',l:'Ditutup pada (opsional)',t:'datetime-local',hint:'Kosongkan = tidak ditutup'},
       F.lamp('Berkas materi (Word, PDF, Excel, video/slide) dan tautan')]},
   tugas:{title:'tugas',wide:1,media:1,
     def:()=>Object.assign(base(),{tgl:todayStr(),tenggat:'',jenis:'Tugas harian',terbit:true}),
     fields:()=>[F.kelas(),F.sem(),F.elemen(),{k:'jenis',l:'Jenis',t:'select',opts:['Tugas harian','Tugas praktik','Proyek','Tugas kelompok']},
       {k:'judul',l:'Judul tugas',t:'text',req:1,w:'full'},{k:'tgl',l:'Tanggal diberikan',t:'date'},{k:'tenggat',l:'Tenggat pengumpulan',t:'date'},{k:'link',l:'Tautan pengumpulan (Google Form / Classroom / Drive)',t:'text',w:'full',ph:'https://…'},
-      {k:'instruksi',l:'Instruksi / soal',t:'textarea',rows:5,w:'full'},{k:'terbit',l:'Tampilkan di portal siswa',t:'check'},F.lamp('Lampiran soal (Word, PDF, Excel, tautan)')]},
+      {k:'instruksi',l:'Instruksi / soal',t:'textarea',rows:5,w:'full'},{k:'terbit',l:'Tampilkan di portal siswa',t:'check'},{k:'jadwalBuka',l:'Tugas mulai tampil (opsional)',t:'datetime-local',hint:'Kosongkan = langsung'},{k:'jadwalTutup',l:'Pengumpulan ditutup pada (opsional)',t:'datetime-local',hint:'Setelah ini siswa tidak bisa mengumpulkan'},F.lamp('Lampiran soal (Word, PDF, Excel, tautan)')]},
   penilaian:{title:'komponen nilai',wide:0,
     def:()=>Object.assign(base(),{kategori:UI.nilaiTab==='akhir'?'ulangan':UI.nilaiTab,tgl:todayStr()}),
     fields:()=>[F.kelas(),F.sem(),{k:'kategori',l:'Kategori',t:'select',opts:[['tugas','Nilai tugas'],['ulangan','Nilai ulangan'],['praktik','Nilai praktik']]},
@@ -615,10 +619,10 @@ const ENT={
     def:()=>({tgl:todayStr(),sampai:''}),
     fields:()=>[{k:'tgl',l:'Tanggal',t:'date',req:1},{k:'sampai',l:'Sampai tanggal (opsional)',t:'date'},{k:'ket',l:'Keterangan',t:'text',req:1,w:'full'}]},
   kuis:{title:'ujian online',wide:1,
-    def:()=>Object.assign(base(),{durasi:30,kktp:S.setting.kktp,acak:true,jenis:'Kuis'}),
+    def:()=>Object.assign(base(),{durasi:30,kktp:S.setting.kktp,acak:true,jenis:'Kuis',nilaiMode:'sembunyi',terbit:true}),
     fields:()=>[F.kelas(),F.sem(),F.elemen(),{k:'jenis',l:'Jenis',t:'select',opts:['Kuis','Ulangan harian','PTS','PAS','Latihan']},
       {k:'judul',l:'Judul',t:'text',req:1,w:'full'},{k:'durasi',l:'Durasi (menit)',t:'number',min:1,req:1},{k:'kktp',l:'Batas tuntas',t:'number',min:0,max:100},
-      {k:'link',l:'Tautan ujian online (Google Form dll, opsional)',t:'text',w:'full',ph:'https://…'},{k:'acak',l:'Acak urutan soal',t:'check'},{k:'terbit',l:'Tampilkan di portal siswa',t:'check'},{k:'petunjuk',l:'Petunjuk pengerjaan',t:'textarea',w:'full'},F.lamp('Naskah / bahan ujian (Word, PDF, Excel, tautan)')],
+      {k:'link',l:'Tautan ujian online (Google Form dll, opsional)',t:'text',w:'full',ph:'https://…'},{k:'acak',l:'Acak urutan soal',t:'check'},{k:'terbit',l:'Tampilkan di portal siswa',t:'check'},{k:'nilaiMode',l:'Nilai ujian untuk siswa',t:'select',opts:[['sembunyi','Disembunyikan'],['skor','Tampilkan skor'],['pembahasan','Tampilkan skor + pembahasan']],hint:'Bisa diubah kapan saja di kartu ujian'},{k:'jadwalBuka',l:'Ujian dibuka pada (opsional)',t:'datetime-local'},{k:'jadwalTutup',l:'Ujian ditutup pada (opsional)',t:'datetime-local',hint:'Setelah ini siswa tidak bisa memulai'},{k:'petunjuk',l:'Petunjuk pengerjaan',t:'textarea',w:'full'},F.lamp('Naskah / bahan ujian (Word, PDF, Excel, tautan)')],
     beforeSave:v=>{},afterSave:null}
 };
 function openEnt(coll,id,preset){
@@ -628,7 +632,7 @@ function openEnt(coll,id,preset){
     onSave:v=>{
       if(E.validate){const e=E.validate(v,id);if(e){toast(e,'bad');return false}}
       if(E.beforeSave)E.beforeSave(v);
-      if(id){Object.assign(byId(S[coll],id),v)}else{v.id=uid(coll);if(coll==='kuis')v.soal=[];S[coll].push(v)}
+      if(id){Object.assign(byId(S[coll],id),v)}else{v.id=uid(coll);if(coll==='kuis'){v.soal=(UI.dupSoal||[]).map(x=>Object.assign({},JSON.parse(JSON.stringify(x)),{id:uid('so')}));UI.dupSoal=null}if(coll==='sesi')v.hadir={};S[coll].push(v)}
       if(E.afterSave)E.afterSave(v);
       save();render();toast('Tersimpan','ok');
     }});
@@ -825,7 +829,7 @@ function vAbsInput(){
   return `<div class="row" style="margin-bottom:14px"><button class="btn sm" data-act="abs-step" data-d="-1" ${idx<=0?'disabled':''} aria-label="Pertemuan sebelumnya">‹</button>
     <select data-chg="abssesi" style="max-width:380px" aria-label="Pilih pertemuan">${opts}</select><button class="btn sm" data-act="abs-step" data-d="1" ${idx>=l.length-1?'disabled':''} aria-label="Pertemuan berikutnya">›</button>
     <button class="btn sm" data-act="ent-edit" data-coll="sesi" data-id="${ss.id}">${ic('pen')} Ubah pertemuan</button><span class="mut sm">${idx+1} dari ${l.length} pertemuan</span></div>
-  <div class="row" style="margin-bottom:12px">${ss.mode==='PJJ'?'<span class="chip warn">PJJ</span>':'<span class="chip">Tatap muka</span>'}${ss.link?`<a class="chip info" href="${esc(safeUrl(ss.link))}" target="_blank" rel="noopener noreferrer">${ic('link')} Tautan PJJ</a>`:''}<button class="btn sm" data-act="share" data-coll="sesi" data-id="${ss.id}">${ic('upload')} Bagikan info absen ke siswa</button><label class="btn sm" for="imp-absen">${ic('dl')} Impor kehadiran (Excel/CSV)</label><input type="file" id="imp-absen" accept=".xlsx,.csv" style="position:absolute;width:1px;height:1px;opacity:0"></div>
+  <div class="row" style="margin-bottom:12px">${ss.mode==='PJJ'?'<span class="chip warn">PJJ</span>':'<span class="chip">Tatap muka</span>'}${ss.link?`<a class="chip info" href="${esc(safeUrl(ss.link))}" target="_blank" rel="noopener noreferrer">${ic('link')} Tautan PJJ</a>`:''}${portalCtl('sesi',ss)}<button class="btn sm" data-act="share" data-coll="sesi" data-id="${ss.id}">${ic('upload')} Bagikan info absen ke siswa</button><label class="btn sm" for="imp-absen">${ic('dl')} Impor kehadiran (Excel/CSV)</label><input type="file" id="imp-absen" accept=".xlsx,.csv" style="position:absolute;width:1px;height:1px;opacity:0"></div>
   <div class="card" style="overflow:hidden"><div style="background:var(--brand);color:var(--onbrand);padding:14px 18px"><b>Data Siswa Kelas ${esc(kk.nama)}</b> · ${fTglP(ss.tgl)} · Jam ke ${esc(ss.jam)}${p?' ('+waktuBlok(d.getDay(),p[0],p[1])+')':''} · Minggu ke-${wom(ss.tgl)} ${BULAN[d.getMonth()]} ${d.getFullYear()}</div>
   <div class="pad"><div id="abs-sum" style="margin-bottom:14px">${absSumHTML(ss)}</div>
   <div class="row" style="justify-content:space-between;margin-bottom:12px"><div class="row"><button class="btn sm" data-act="sesi-all2" data-id="${ss.id}">Tandai yang kosong Hadir</button><button class="btn sm" data-act="sesi-allA" data-id="${ss.id}">Tandai yang kosong Tidak Hadir</button><button class="btn sm danger" data-act="sesi-clear" data-id="${ss.id}">Kosongkan semua</button></div>
@@ -889,13 +893,14 @@ const SUB_ST=['Belum','Dikumpulkan','Terlambat','Tidak mengumpulkan'];
 const stChip=s=>s==='Dikumpulkan'?'ok':s==='Terlambat'?'warn':s==='Tidak mengumpulkan'?'bad':'';
 function vMateri(){
   const {k,s}=GK(),sub=UI.sub.materi;
-  const tabs=subTabs('materi',[['materi','Materi & video'],['tugas','Tugas & pengumpulan']]);
+  const tabs=subTabs('materi',[['materi','Materi & video'],['tugas','Tugas & pengumpulan'],['pengumuman','Pengumuman']]);
   if(sub==='materi'){
     const l=S.materi.filter(m=>m.kelas===k&&m.semester===s).sort((a,b)=>(b.tgl||'').localeCompare(a.tgl||''));
     return pgHead('Materi & tugas',`${esc(K().nama)} · semester ${s}`,addBtn('materi','Tambah materi'))+tabs+
     `<div class="list">${l.map(m=>`<article class="card item"><header><div><h3>${esc(m.judul)}</h3><div class="chips"><span class="chip">${esc(m.jenis)}</span>${m.elemen?`<span class="chip info">${esc(m.elemen)}</span>`:''}${m.tgl?`<span class="chip">${fTgl(m.tgl)}</span>`:''}</div></div>${rowActs('materi',m.id)}</header>
-      ${m.deskripsi?`<div class="body">${esc(m.deskripsi)}</div>`:''}<div class="foot"><button class="btn sm" data-act="share" data-coll="materi" data-id="${m.id}">${ic('upload')} Bagikan ke siswa</button>${lampChips(m.lampiran)}</div></article>`).join('')||emptyBox('Belum ada materi','Unggah modul, slide, atau tautkan video pembelajaran.',addBtn('materi','Tambah materi'))}</div>`;
+      ${m.deskripsi?`<div class="body">${esc(m.deskripsi)}</div>`:''}<div class="foot"><button class="btn sm" data-act="share" data-coll="materi" data-id="${m.id}">${ic('upload')} Bagikan ke siswa</button>${portalCtl('materi',m)}${lampChips(m.lampiran)}</div></article>`).join('')||emptyBox('Belum ada materi','Unggah modul, slide, atau tautkan video pembelajaran.',addBtn('materi','Tambah materi'))}</div>`;
   }
+  if(sub==='pengumuman')return vPengumuman(tabs);
   if(UI.tugasOpen&&byId(S.tugas,UI.tugasOpen))return vTugasDetail(byId(S.tugas,UI.tugasOpen),tabs);
   const t0=todayStr();
   const l=S.tugas.filter(t=>t.kelas===k&&t.semester===s).sort((a,b)=>(b.tgl||'').localeCompare(a.tgl||''));
@@ -906,7 +911,7 @@ function vMateri(){
     const done=Object.entries(sb).filter(([id,v])=>ids.has(id)&&(v.st==='Dikumpulkan'||v.st==='Terlambat')).length;
     const late=t.tenggat&&t.tenggat<t0;
     return `<article class="card item"><header><div><h3>${esc(t.judul)}</h3><div class="chips"><span class="chip">${esc(t.jenis)}</span>${t.elemen?`<span class="chip info">${esc(t.elemen)}</span>`:''}${t.tenggat?`<span class="chip ${late?'bad':'warn'}">Tenggat ${fTgl(t.tenggat)}</span>`:''}<span class="chip ${done===N&&N?'ok':''}">${done}/${N} terkumpul</span></div></div>${rowActs('tugas',t.id)}</header>
-    ${t.instruksi?`<div class="body">${esc(t.instruksi)}</div>`:''}<div class="foot"><button class="btn sm primary" data-act="tugas-open" data-id="${t.id}">Pengumpulan & nilai</button><button class="btn sm" data-act="share" data-coll="tugas" data-id="${t.id}">${ic('upload')} Bagikan ke siswa</button>${lampChips(t.lampiran)}</div></article>`}).join('')||emptyBox('Belum ada tugas','Buat tugas, lalu catat pengumpulan dan nilainya per siswa.',addBtn('tugas','Buat tugas'))}</div>`;
+    ${t.instruksi?`<div class="body">${esc(t.instruksi)}</div>`:''}<div class="foot"><button class="btn sm primary" data-act="tugas-open" data-id="${t.id}">Pengumpulan & nilai</button><button class="btn sm" data-act="share" data-coll="tugas" data-id="${t.id}">${ic('upload')} Bagikan ke siswa</button>${portalCtl('tugas',t)}${lampChips(t.lampiran)}</div></article>`}).join('')||emptyBox('Belum ada tugas','Buat tugas, lalu catat pengumpulan dan nilainya per siswa.',addBtn('tugas','Buat tugas'))}</div>`;
 }
 function vTugasDetail(t,tabs){
   const sis=siswaOf(t.kelas),sb=S.sub[t.id]||{};
@@ -962,10 +967,10 @@ function vUjian(){
   if(UI.kuisEdit&&byId(S.kuis,UI.kuisEdit))return vSoal(byId(S.kuis,UI.kuisEdit));
   if(UI.kuisHasil&&byId(S.kuis,UI.kuisHasil))return vHasil(byId(S.kuis,UI.kuisHasil));
   const {k,s}=GK();const l=S.kuis.filter(q=>q.kelas===k&&q.semester===s);
-  return pgHead('Ujian online',`${esc(K().nama)} · semester ${s}. Siswa mengerjakan di perangkat ini (mode ujian dengan timer), nilai dikoreksi otomatis.`,addBtn('kuis','Buat ujian'))+
+  return pgHead('Ujian online',`${esc(K().nama)} · semester ${s}. Siswa mengerjakan lewat portal di HP masing-masing (atau tombol Mulai ujian untuk satu perangkat), nilai dikoreksi otomatis. Atur nilai tampil atau disembunyikan di tiap kartu ujian.`,addBtn('kuis','Buat ujian'))+
   `<div class="list">${l.map(q=>{const h=S.hasil.filter(x=>x.kuisId===q.id);const sis=new Set(siswaOf(k).map(x=>x.id));const ikut=new Set(h.filter(x=>sis.has(x.siswaId)).map(x=>x.siswaId)).size;
     return `<article class="card item"><header><div><h3>${esc(q.judul)}</h3><div class="chips"><span class="chip">${esc(q.jenis)}</span><span class="chip">${q.soal.length} soal</span><span class="chip">${q.durasi} menit</span><span class="chip">Tuntas ≥ ${q.kktp}</span>${q.elemen?`<span class="chip info">${esc(q.elemen)}</span>`:''}<span class="chip ${ikut?'ok':''}">${ikut}/${sis.size} sudah ikut</span></div></div>${rowActs('kuis',q.id)}</header>
-    ${q.petunjuk?`<div class="body">${esc(q.petunjuk)}</div>`:''}<div class="foot"><button class="btn sm acc" data-act="kuis-start" data-id="${q.id}" ${q.soal.length?'':'disabled'}>Mulai ujian</button><button class="btn sm" data-act="kuis-soal" data-id="${q.id}">Kelola soal</button><button class="btn sm" data-act="kuis-hasil" data-id="${q.id}">Hasil</button><button class="btn sm" data-act="kuis-nilai" data-id="${q.id}">Salin ke nilai ulangan</button><button class="btn sm" data-act="share" data-coll="kuis" data-id="${q.id}">${ic('upload')} Bagikan ke siswa</button>${lampChips(q.lampiran)}</div></article>`}).join('')||emptyBox('Belum ada ujian','Buat kuis, tambahkan soal (atau impor dari Excel), lalu jalankan di kelas.',addBtn('kuis','Buat ujian'))}</div>`;
+    ${q.petunjuk?`<div class="body">${esc(q.petunjuk)}</div>`:''}<div class="foot"><button class="btn sm acc" data-act="kuis-start" data-id="${q.id}" ${q.soal.length?'':'disabled'}>Mulai ujian</button><button class="btn sm" data-act="kuis-soal" data-id="${q.id}">Kelola soal</button><button class="btn sm" data-act="kuis-hasil" data-id="${q.id}">Hasil</button><button class="btn sm" data-act="kuis-nilai" data-id="${q.id}">Salin ke nilai ulangan</button><button class="btn sm" data-act="share" data-coll="kuis" data-id="${q.id}">${ic('upload')} Bagikan ke siswa</button>${portalCtl('kuis',q)}<label class="row sm" style="gap:6px"><span class="mut">Nilai ke siswa:</span><select data-chg="nilaimode" data-id="${q.id}" style="width:auto" aria-label="Tampilan nilai ujian untuk siswa">${[['sembunyi','Disembunyikan'],['skor','Skor saja'],['pembahasan','Skor + pembahasan']].map(([v,l])=>`<option value="${v}" ${(q.nilaiMode||'sembunyi')===v?'selected':''}>${l}</option>`).join('')}</select></label>${lampChips(q.lampiran)}</div></article>`}).join('')||emptyBox('Belum ada ujian','Buat kuis, tambahkan soal (atau impor dari Excel), lalu jalankan di kelas.',addBtn('kuis','Buat ujian'))}</div>`;
 }
 function soalCard(q,s,i){
   const keyIn=s.t==='pg'?LET.map((L,x)=>`<div class="optrow"><input type="radio" name="key-${s.id}" value="${L}" ${s.key===L?'checked':''} data-chg="soalkey" data-q="${s.id}" aria-label="Kunci ${L}"><input type="text" value="${esc(s.opts[x]||'')}" placeholder="Pilihan ${L}${x>=4?' (opsional)':''}" data-chg="soalopt" data-q="${s.id}" data-x="${x}" aria-label="Pilihan ${L}"><b>${L}</b></div>`).join('')+'<p class="mut sm" style="margin-top:6px">Pilih tombol bulat di sebelah kiri pilihan yang benar.</p>'
@@ -1245,6 +1250,7 @@ let statTxt='Tersimpan';
 const _setStat=setStat;
 setStat=function(t,c){statTxt=t;_setStat(t,c)};
 function render(){
+  (S.sesi||[]).forEach(x=>{if(!x.hadir||typeof x.hadir!=='object')x.hadir={}});
   renderNav();renderTop();
   $('#main').innerHTML=VIEWS[UI.tab]();
   if(UI.tab==='ujian'&&UI.run&&!UI.run.done)startTimer();
@@ -1348,6 +1354,8 @@ const ACT={
   'x-absen':exportAbsen,'x-nilai':exportNilai,'x-jurnal':exportJurnal,'x-semua':exportSemua,'x-kuis':d=>exportKuis(d.id)
 };
 const CHG={
+  nilaimode:(v,el,d)=>{byId(S.kuis,d.id).nilaiMode=v;save();render();autoSync(true)},
+  pnilai:(v,el,d)=>{S.setting.portalNilai=Object.assign(pn(),{[d.k]:el.checked});save();render();autoSync(true)},
   gk:v=>{S.setting.kelas=v;UI.absBulan=null;UI.tugasOpen=null;UI.kuisEdit=null;UI.kuisHasil=null;save();render()},
   gs:v=>{S.setting.semester=v;UI.absBulan=null;UI.tugasOpen=null;UI.kuisEdit=null;UI.kuisHasil=null;save();render()},
   absbulan:v=>{UI.absBulan=v;render()},
@@ -1385,7 +1393,7 @@ document.addEventListener('change',e=>{
   if(el.id==='bk-file'){const f=el.files[0];el.value='';if(!f)return;
     f.text().then(t=>{let d;try{d=JSON.parse(t)}catch(x){toast('File cadangan tidak valid.','bad');return}
       if(!d||!Array.isArray(d.kelas)||!Array.isArray(d.siswa)||!d.profil){toast('File ini bukan cadangan Jurnal Guru.','bad');return}
-      ask('Pulihkan dari cadangan?',()=>{S=d;UI.absBulan=null;save(true);render();toast('Data dipulihkan','ok')},'Lanjut','Data saat ini akan diganti dengan isi cadangan.')});return}
+      ask('Pulihkan dari cadangan?',()=>{S=d;fixState();UI.absBulan=null;save(true);render();toast('Data dipulihkan','ok')},'Lanjut','Data saat ini akan diganti dengan isi cadangan.')});return}
   if(el.dataset.chg){const f=CHG[el.dataset.chg];if(f)f(el.value,el,el.dataset);return}
   if(MODAL&&el.closest('#modal-body'))refreshModal(el.name);
 });
@@ -1423,7 +1431,7 @@ async function fbConnect(){
     FBX=await FB.init();
     FBX.auth.onChange(u=>{fbUser=u;if(UI.tab==='portal')render()});
     fbMsg='';
-  }catch(e){FBX=null;fbMsg=e.message==='NOCONFIG'?'Firebase belum dikonfigurasi. Isi firebase-config.js (lihat PANDUAN.md).':'Tidak bisa menghubungi Firebase. Periksa koneksi internet dan firebase-config.js.'}
+  }catch(e){FBX=null;fbMsg=(e.message==='NOCONFIG'?'Firebase belum dikonfigurasi. Isi firebase-config.js (lihat PANDUAN.md).':e.message==='NOFB'?'Berkas fbapi.js tidak termuat. Pastikan fbapi.js ada di GitHub bersama index.html.':'Tidak bisa menghubungi Firebase. Periksa koneksi internet dan firebase-config.js.')+(e.message==='NOCONFIG'||e.message==='NOFB'?'':' Keterangan teknis: '+((e&&(e.code||e.name))||'')+' '+(e&&e.message||''))}
   if(UI.tab==='portal')render();
 }
 const isGuruLogin=()=>!!(fbUser&&fbUser.email);
@@ -1435,11 +1443,11 @@ function linksOf(o){return(o.lampiran||[]).filter(x=>x.k==='l').map(x=>({title:x
 function buildPublik(kid){
   const kk=byId(S.kelas,kid);
   return {
-    nama:kk.nama,updated:Date.now(),
-    materi:S.materi.filter(m=>m.kelas===kid&&m.terbit).sort((a,b)=>(b.tgl||'').localeCompare(a.tgl||'')).map(m=>({id:m.id,judul:m.judul,jenis:m.jenis,deskripsi:m.deskripsi||'',tgl:m.tgl||'',elemen:m.elemen||'',links:linksOf(m)})),
-    tugas:S.tugas.filter(t=>t.kelas===kid&&t.terbit).sort((a,b)=>(b.tgl||'').localeCompare(a.tgl||'')).map(t=>({id:t.id,judul:t.judul,jenis:t.jenis,tgl:t.tgl||'',tenggat:t.tenggat||'',instruksi:t.instruksi||'',link:t.link?safeUrl(t.link):'',links:linksOf(t)})),
-    kuis:S.kuis.filter(q=>q.kelas===kid&&q.terbit&&q.soal.length).map(q=>({id:q.id,judul:q.judul,jenis:q.jenis,durasi:q.durasi,petunjuk:q.petunjuk||'',acak:!!q.acak,soal:q.soal.map(s=>({id:s.id,t:s.t,q:s.q,opts:s.t==='pg'?s.opts.map((o,i)=>o?{k:LET[i],v:o}:null).filter(Boolean):[]}))})),
-    absen:S.sesi.filter(x=>x.kelas===kid&&x.buka).sort(cmpSesi).map(x=>({id:x.id,tgl:x.tgl,jam:x.jam,mode:x.mode||'Tatap muka',link:x.link?safeUrl(x.link):''}))
+    nama:kk.nama,updated:Date.now(),nilaiTampil:pn(),pengumuman:S.pengumuman.filter(p=>p.terbit&&(p.kelas==='ALL'||p.kelas===kid)).sort((a,b)=>(b.tgl||'').localeCompare(a.tgl||'')).map(p=>({id:p.id,judul:p.judul,isi:p.isi||'',tgl:p.tgl||''})),
+    materi:S.materi.filter(m=>m.kelas===kid&&m.terbit).sort((a,b)=>(b.tgl||'').localeCompare(a.tgl||'')).map(m=>({id:m.id,judul:m.judul,jenis:m.jenis,deskripsi:m.deskripsi||'',tgl:m.tgl||'',elemen:m.elemen||'',jb:m.jadwalBuka||'',jt:m.jadwalTutup||'',links:linksOf(m)})),
+    tugas:S.tugas.filter(t=>t.kelas===kid&&t.terbit).sort((a,b)=>(b.tgl||'').localeCompare(a.tgl||'')).map(t=>({id:t.id,judul:t.judul,jenis:t.jenis,tgl:t.tgl||'',tenggat:t.tenggat||'',instruksi:t.instruksi||'',link:t.link?safeUrl(t.link):'',jb:t.jadwalBuka||'',jt:t.jadwalTutup||'',links:linksOf(t)})),
+    kuis:S.kuis.filter(q=>q.kelas===kid&&q.terbit&&q.soal.length).map(q=>({id:q.id,judul:q.judul,jenis:q.jenis,durasi:q.durasi,petunjuk:q.petunjuk||'',acak:!!q.acak,jb:q.jadwalBuka||'',jt:q.jadwalTutup||'',nilaiMode:q.nilaiMode||'sembunyi',soal:q.soal.map(s=>({id:s.id,t:s.t,q:s.q,opts:s.t==='pg'?s.opts.map((o,i)=>o?{k:LET[i],v:o}:null).filter(Boolean):[]}))})),
+    absen:S.sesi.filter(x=>x.kelas===kid&&x.buka).sort(cmpSesi).map(x=>({id:x.id,tgl:x.tgl,jam:x.jam,mode:x.mode||'Tatap muka',link:x.link?safeUrl(x.link):'',jb:x.jadwalBuka||'',jt:x.jadwalTutup||''}))
   };
 }
 async function fbPublish(){
@@ -1462,19 +1470,19 @@ async function fbKodePush(){
 async function fbPull(){
   if(needLogin())return;
   try{
-    setStat('Mengambil data siswa…','busy');
+    setStat('Mengambil data siswa…','busy');S.sesi.forEach(x=>{if(!x.hadir||typeof x.hadir!=='object')x.hadir={}});
     const byKode=new Map(S.siswa.filter(s=>s.kode).map(s=>[s.kode,s]));
     const [kir,abs,uji]=await Promise.all([FBX.group('kiriman'),FBX.group('absen'),FBX.group('ujian')]);
     let nk=0,na=0,nu=0;
-    for(const d of kir){const w=byKode.get(d.path.split('/')[1]);const t=w&&byId(S.tugas,d.data.tugasId||d.id);if(!t)continue;
+    for(const d of kir){try{const w=byKode.get(d.path.split('/')[1]);const t=w&&byId(S.tugas,d.data.tugasId||d.id);if(!t)continue;
       const ms=d.data.waktu||Date.now(),tg=ymd(new Date(ms));S.sub[t.id]=S.sub[t.id]||{};
       const isi=String(d.data.isi||'').trim(),isUrl=/^https?:\/\//i.test(isi),cur=S.sub[t.id][w.id]||{};
-      S.sub[t.id][w.id]=Object.assign({},cur,{st:t.tenggat&&tg>t.tenggat?'Terlambat':'Dikumpulkan',tgl:tg,cat:isUrl?'Kiriman lewat portal':isi,lampiran:isUrl?[{k:'l',url:isi,title:'Kiriman '+w.nama.split(' ')[0]}]:(cur.lampiran||[]).filter(x=>x.k==='f')});nk++}
-    for(const d of abs){const w=byKode.get(d.path.split('/')[1]);const s=w&&byId(S.sesi,d.data.sesiId||d.id);if(!s||!['H','S','I'].includes(d.data.status))continue;
-      if(s.hadir[w.id]!==d.data.status){s.hadir[w.id]=d.data.status;na++}}
-    for(const d of uji){const w=byKode.get(d.path.split('/')[1]);const q=w&&byId(S.kuis,d.data.kuisId||d.id);if(!q||!d.data.final)continue;
+      S.sub[t.id][w.id]=Object.assign({},cur,{st:t.tenggat&&tg>t.tenggat?'Terlambat':'Dikumpulkan',tgl:tg,cat:isUrl?'Kiriman lewat portal':isi,lampiran:isUrl?[{k:'l',url:isi,title:'Kiriman '+w.nama.split(' ')[0]}]:(cur.lampiran||[]).filter(x=>x.k==='f')});nk++}catch(e){console.error(e)}}
+    for(const d of abs){try{const w=byKode.get(d.path.split('/')[1]);const s=w&&byId(S.sesi,d.data.sesiId||d.id);if(!s||!['H','S','I'].includes(d.data.status))continue;
+      if(s.hadir[w.id]!==d.data.status){s.hadir[w.id]=d.data.status;na++}}catch(e){console.error(e)}}
+    for(const d of uji){try{const w=byKode.get(d.path.split('/')[1]);const q=w&&byId(S.kuis,d.data.kuisId||d.id);if(!q||!d.data.final)continue;
       const key=w.kode+':'+q.id;if(S.hasil.some(h=>h.remote===key))continue;
-      const g=grade(q,d.data.jawab||{});S.hasil.push({id:uid('hs'),kuisId:q.id,siswaId:w.id,waktu:d.data.waktu||Date.now(),skor:g.skor,ok:g.ok,total:g.total,remote:key});nu++}
+      const g=grade(q,d.data.jawab||{});S.hasil.push({id:uid('hs'),kuisId:q.id,siswaId:w.id,waktu:d.data.waktu||Date.now(),skor:g.skor,ok:g.ok,total:g.total,remote:key,jawab:d.data.jawab||{}});nu++}catch(e){console.error(e)}}
     save();render();toast(`Diambil: ${nk} kiriman tugas, ${na} absen, ${nu} hasil ujian`,'ok');
   }catch(e){setStat('Tersimpan');fbErr(e)}
 }
@@ -1486,10 +1494,10 @@ async function fbNilai(){
   try{
     let n=0;
     for(const w of l){
-      const r=nilaiAkhir(w.kelas,s,w.id),items=[];
-      for(const kat of Object.keys(KAT))nilItems(w.kelas,s,kat).forEach(it=>{const v=scoreOf(it.id,w.id);if(v!=null)items.push({kat:KAT[kat],judul:it.judul,nilai:v})});
-      const kuis=S.kuis.filter(q=>q.kelas===w.kelas).map(q=>{const h=S.hasil.filter(x=>x.kuisId===q.id&&x.siswaId===w.id);return h.length?{judul:q.judul,skor:Math.max(...h.map(x=>x.skor))}:null}).filter(Boolean);
-      await FBX.set(`murid/${w.kode}/nilai/ringkas`,{updated:Date.now(),semester:s,kktp:kt,items,kuis,akhir:{tugas:r.tugas,ulangan:r.ulangan,praktik:r.praktik,na:r.na,status:r.na==null?'':r.na>=kt?'Tuntas':'Remedial'}});
+      const P=pn(),r=nilaiAkhir(w.kelas,s,w.id),items=[];
+      for(const kat of Object.keys(KAT))nilItems(w.kelas,s,kat).forEach(it=>{const v=scoreOf(it.id,w.id);if(v!=null&&P.rincian)items.push({kat:KAT[kat],judul:it.judul,nilai:v})});
+      const kuis=S.kuis.filter(q=>q.kelas===w.kelas).map(q=>{const h=S.hasil.filter(x=>x.kuisId===q.id&&x.siswaId===w.id);if(!h.length||!P.kuis||(q.nilaiMode||'sembunyi')==='sembunyi')return null;const best=h.reduce((a,b)=>b.skor>a.skor?b:a);const o={kuisId:q.id,judul:q.judul,skor:best.skor,ok:best.ok,total:best.total};if(q.nilaiMode==='pembahasan'&&best.jawab)o.review=q.soal.map((sl,i)=>{const a=best.jawab[sl.id],bn=grade({soal:[sl]},{[sl.id]:a}).ok===1;return{no:i+1,q:sl.q,jawab:ansText(sl,a),benar:bn,kunci:bn?'':keyText(sl)}});return o}).filter(Boolean);
+      await FBX.set(`murid/${w.kode}/nilai/ringkas`,{updated:Date.now(),semester:s,kktp:kt,items,kuis,akhir:!P.akhir?null:{tugas:r.tugas,ulangan:r.ulangan,praktik:r.praktik,na:r.na,status:r.na==null?'':r.na>=kt?'Tuntas':'Remedial'}});
       n++;if(n%20===0)setStat('Mengirim nilai '+n+'/'+l.length+'…','busy');
     }
     setStat('Tersimpan');toast('Nilai '+n+' siswa dikirim ke portal','ok');
@@ -1512,7 +1520,7 @@ async function fbRestore(){
     const l=(await FBX.list('cadangan/'+fbUser.uid+'/bagian')).sort((a,b)=>a.data.i-b.data.i);
     if(!l.length||l.length!==l[0].data.n){toast('Cadangan tidak ditemukan atau tidak lengkap.','bad');return}
     const d=JSON.parse(l.map(x=>x.data.teks).join(''));
-    ask('Pulihkan dari cadangan Firebase?',()=>{S=d;UI.absBulan=null;save(true);render();toast('Data dipulihkan','ok')},'Lanjut','Data di perangkat ini akan diganti dengan cadangan terakhir ('+new Date(l[0].data.updated).toLocaleString('id-ID')+').');
+    ask('Pulihkan dari cadangan Firebase?',()=>{S=d;fixState();UI.absBulan=null;save(true);render();toast('Data dipulihkan','ok')},'Lanjut','Data di perangkat ini akan diganti dengan cadangan terakhir ('+new Date(l[0].data.updated).toLocaleString('id-ID')+').');
   }catch(e){fbErr(e)}
 }
 
@@ -1539,7 +1547,9 @@ function vPortal(){
       <div class="chips" style="margin-bottom:12px"><span class="chip">${cnt('materi',x=>x.terbit)} materi</span><span class="chip">${cnt('tugas',x=>x.terbit)} tugas</span><span class="chip">${cnt('kuis',x=>x.terbit)} ujian</span><span class="chip">${cnt('sesi',x=>x.buka)} absen dibuka</span></div>
       <button class="btn primary" data-act="fb-publish">Terbitkan sekarang</button><p class="mut sm" style="margin-top:10px">Centang "Tampilkan di portal siswa" pada form materi, tugas, dan ujian; centang "Buka absen mandiri" pada pertemuan. Berkas unggahan tidak dikirim, gunakan tautan.</p></div>
     <div class="card pad"><h2>2. Ambil kiriman siswa</h2><p class="mut" style="margin:6px 0 12px">Menarik tugas yang dikumpulkan, absen mandiri, dan jawaban ujian. Jawaban ujian dikoreksi di sini memakai kunci Anda.</p><button class="btn primary" data-act="fb-pull">Ambil sekarang</button></div>
-    <div class="card pad"><h2>3. Kirim nilai ke siswa</h2><p class="mut" style="margin:6px 0 12px">Setiap siswa hanya bisa melihat nilainya sendiri (semester ${S.setting.semester}).</p><button class="btn primary" data-act="fb-nilai">Kirim nilai</button></div></div>`;
+    <div class="card pad"><h2>3. Kirim nilai ke siswa</h2><p class="mut" style="margin:6px 0 12px">Setiap siswa hanya bisa melihat nilainya sendiri (semester ${S.setting.semester}). Pilih apa yang boleh dilihat siswa:</p>
+      ${[['akhir','Nilai akhir'],['rincian','Rincian nilai (tugas, ulangan, praktik)'],['kuis','Hasil ujian online (juga mengikuti pengaturan tiap ujian)']].map(([k,l])=>`<label class="chk" style="padding-top:0;margin-bottom:6px"><input type="checkbox" data-chg="pnilai" data-k="${k}" ${pn()[k]?'checked':''}> ${l}</label>`).join('')}
+      <button class="btn primary" data-act="fb-nilai" style="margin-top:6px">Kirim nilai</button><p class="mut sm" style="margin-top:8px">Mengubah centang di atas langsung memperbarui siswa bila Anda sudah masuk.</p></div></div>`;
   }else{
     body=`<div class="card pad"><h2 style="margin-bottom:6px">Cadangan data guru di Firebase</h2><p class="mut" style="margin-bottom:12px">Menyimpan seluruh data jurnal, absensi, dan nilai ke akun Firebase Anda, supaya aman bila peramban dibersihkan atau berganti perangkat. Berkas unggahan tidak ikut. ${S.setting.lastBackup?'Cadangan terakhir: <b>'+new Date(S.setting.lastBackup).toLocaleString('id-ID')+'</b>.':'Belum pernah dicadangkan.'}</p>
     <div class="row"><button class="btn primary" data-act="fb-backup">Cadangkan sekarang</button><button class="btn" data-act="fb-restore">Pulihkan dari cadangan</button></div></div>`;
@@ -1562,6 +1572,39 @@ Object.assign(ACT,{
 
 setTimeout(fbConnect,0);
 
+
+/* ================= tampil/sembunyi, jadwal tayang, duplikat, pengumuman ================= */
+const pn=()=>Object.assign({akhir:true,rincian:true,kuis:true},S.setting.portalNilai||{});
+function fDT(s){const d=new Date(s);return isNaN(d)?'':d.getDate()+' '+BULAN[d.getMonth()].slice(0,3)+' '+pad(d.getHours())+'.'+pad(d.getMinutes())}
+function ansText(sl,a){if(a==null||a==='')return '(kosong)';if(sl.t==='pg')return a+'. '+(sl.opts[LET.indexOf(a)]||'');return String(a)}
+function keyText(sl){if(sl.t==='pg')return sl.key+'. '+(sl.opts[LET.indexOf(sl.key)]||'');return String(sl.key||'').split('|')[0]}
+function portalCtl(coll,it){
+  const f=coll==='sesi'?'buka':'terbit',on=!!it[f];
+  const win=(it.jadwalBuka||it.jadwalTutup)?`<span class="chip info">${it.jadwalBuka?'Buka '+fDT(it.jadwalBuka):''}${it.jadwalBuka&&it.jadwalTutup?' · ':''}${it.jadwalTutup?'Tutup '+fDT(it.jadwalTutup):''}</span>`:'';
+  return `<span class="chip ${on?'ok':''}">${on?'Tampil di portal':'Disembunyikan'}</span>${win}<button class="btn sm" data-act="tog" data-coll="${coll}" data-id="${it.id}" data-f="${f}">${on?'Sembunyikan':'Tampilkan'}</button>`+(coll==='sesi'?'':`<button class="btn sm" data-act="dup" data-coll="${coll}" data-id="${it.id}">Duplikat</button>`);
+}
+async function autoSync(withNilai){
+  if(!FBX||!isGuruLogin()){toast('Tersimpan. Klik "Terbitkan sekarang"'+(withNilai?' dan "Kirim nilai"':'')+' di menu Portal siswa agar siswa melihat perubahan.');return}
+  await fbPublish();if(withNilai)await fbNilai();
+}
+ENT.pengumuman={title:'pengumuman',
+  def:()=>({kelas:'ALL',tgl:todayStr(),terbit:true}),
+  fields:()=>[{k:'kelas',l:'Untuk kelas',t:'select',opts:()=>[['ALL','Semua kelas']].concat(S.kelas.map(k=>[k.id,k.nama]))},{k:'tgl',l:'Tanggal',t:'date'},
+    {k:'judul',l:'Judul',t:'text',req:1,w:'full'},{k:'isi',l:'Isi pengumuman',t:'textarea',rows:5,w:'full'},{k:'terbit',l:'Tampilkan di portal siswa',t:'check'}]};
+function vPengumuman(tabs){
+  const l=S.pengumuman.slice().sort((a,b)=>(b.tgl||'').localeCompare(a.tgl||''));
+  return pgHead('Materi & tugas','Pengumuman tampil di Beranda portal siswa. Klik "Terbitkan sekarang" (atau tombol Tampilkan/Sembunyikan) agar siswa melihatnya.',addBtn('pengumuman','Buat pengumuman'))+tabs+
+  `<div class="list">${l.map(p=>`<article class="card item"><header><div><h3>${esc(p.judul)}</h3><div class="chips"><span class="chip">${p.kelas==='ALL'?'Semua kelas':esc(kNama(p.kelas))}</span>${p.tgl?`<span class="chip">${fTgl(p.tgl)}</span>`:''}</div></div>${rowActs('pengumuman',p.id)}</header>${p.isi?`<div class="body">${esc(p.isi)}</div>`:''}<div class="foot">${portalCtl('pengumuman',p)}</div></article>`).join('')||emptyBox('Belum ada pengumuman','Tulis informasi untuk siswa, misalnya jadwal ujian atau tugas tambahan.',addBtn('pengumuman','Buat pengumuman'))}</div>`;
+}
+Object.assign(ACT,{
+  tog:d=>{const it=byId(S[d.coll],d.id);it[d.f]=!it[d.f];save();render();autoSync(false)},
+  dup:d=>{
+    const it=byId(S[d.coll],d.id),c=JSON.parse(JSON.stringify(it));
+    ['id','lampiran','hasil'].forEach(k=>delete c[k]);c.judul=(c.judul||'')+' (salinan)';c.lampiran=(it.lampiran||[]).filter(x=>x.k==='l');c.jadwalBuka='';c.jadwalTutup='';
+    if(d.coll==='kuis'){UI.dupSoal=it.soal;delete c.soal}
+    openEnt(d.coll,null,c);toast('Pilih kelas tujuan lalu Simpan. Berkas unggahan tidak ikut disalin, hanya tautan.');
+  }
+});
 </script>
 </body>
 </html>
